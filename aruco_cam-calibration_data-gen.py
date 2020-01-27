@@ -5,16 +5,19 @@
 4. Press 'q' to quit.
 '''
 
+import os 
 import cv2
+from pathlib import Path
 
 camera = cv2.VideoCapture(0)
 ret, img = camera.read()
 
+root = Path(__file__).parent.absolute()
+img_path = str(root.joinpath("webcam/data/"))
 
-path = "home/simon/Pictures/webcam/"
 count = 0
 while True:
-    name = path + str(count)+".png"
+    name = img_path + str(count)+'.png'
     ret, img = camera.read()
     cv2.imshow("img", img)
 
@@ -23,5 +26,5 @@ while True:
         cv2.imwrite(name, img)
         cv2.imshow("img", img)
         count += 1
-        if cv2.waitKey(0) & 0xFF == ord('q'):
-            break
+    if cv2.waitKey(0) & 0xFF == ord('q'):
+        break
