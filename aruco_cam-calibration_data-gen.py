@@ -13,11 +13,12 @@ camera = cv2.VideoCapture(0)
 ret, img = camera.read()
 
 root = Path(__file__).parent.absolute()
-img_path = str(root.joinpath("webcam/data/"))
+path = root.joinpath("webcam")
+img_path = str(root.joinpath("webcam/"))
 
 count = 0
 while True:
-    name = img_path + str(count)+'.png'
+    name = img_path + str(count)+'.jpg'
     ret, img = camera.read()
     cv2.imshow("img", img)
 
@@ -26,5 +27,5 @@ while True:
         cv2.imwrite(name, img)
         cv2.imshow("img", img)
         count += 1
-    if cv2.waitKey(0) & 0xFF == ord('q'):
-        break
+        if cv2.waitKey(0) & 0xFF == ord('q'):
+            break

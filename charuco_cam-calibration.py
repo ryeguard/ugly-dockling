@@ -1,26 +1,27 @@
-import numpy as np
-import cv2, PIL, os
+import cv2
 from cv2 import aruco
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-import pandas as pd
-#matplotlib nbagg
 
-workdir = "./workdir/"
-aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
-board = aruco.CharucoBoard_create(7, 5, 1, .8, aruco_dict)
-imboard = board.draw((2000, 2000))
-cv2.imwrite(workdir + "chessboard.tiff", imboard)
-fig = plt.figure()
-ax = fig.add_subplot(1,1,1)
-plt.imshow(imboard, cmap = mpl.cm.gray, interpolation = "nearest")
-ax.axis("off")
-plt.show()
+dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
+board = aruco.CharucoBoard_create(3,3,.025,.0125,dictionary)
+img = board.draw((200,200))
+cv2.imwrite('charuco.png',img)
 
-datadir = "../../data/calib_tel_ludo/"
-images = np.array([datadir + f for f in os.listdir(datadir) if f.endswith(".png") ])
-order = np.argsort([int(p.split(".")[-2].split("_")[-1]) for p in images])
-images = images[order]
-images
+cap = cv2.VideoCapture(0)
 
+allCharucoCorners = []
+allCharucoIds = []
+
+for i in range(1):
+
+    # Capture and image
+    ret,frame = cap.read()
+
+    # Convert to gray scale
+    grayframe = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+
+    # Detect markers
+    res = aruco.detectMarkers(grayframe,dictionary)
+    print(res)
+
+cap.release()
+cv2.destroyAllWindows()
