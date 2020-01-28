@@ -1,3 +1,8 @@
+# Custom ignore
+.vscode/
+ugly-env/
+
+# Everything below is from standard Python .gitignore
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
