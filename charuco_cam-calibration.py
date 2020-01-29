@@ -18,20 +18,26 @@ def save_json(data):
         f.write(json_data)
 
 def calibrate_camera():
+    # Define camera resolution
+    imsize = (640,480)
 
+    # Generate Charuco board
     dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
     board = aruco.CharucoBoard_create(3,3,.025,.0125,dictionary)
-    img = board.draw((200,200))
+    img = board.draw((600,600))
     #cv2.imwrite('charuco.png',img)
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(2)
+    ret, frame = cap.read()
+    print(frame.shape)
+    #cv2.imshow('og frame',frame)
 
     allCharucoCorners = []
     allCharucoIds = []
 
     frame_idx = 0
     frame_spacing = 5 # Only check every fifth frame
-    required_count = 20
+    required_count = 30
     success = False
 
     while True:
@@ -44,6 +50,7 @@ def calibrate_camera():
 
         # Detect markers
         marker_corners, marker_ids, _ = aruco.detectMarkers(grayframe,dictionary)
+        aruco.detectMarkers()
         aruco.drawDetectedMarkers(grayframe, marker_corners, marker_ids)
 
         # If detected any markers
@@ -75,9 +82,6 @@ def calibrate_camera():
             success = True
             break
 
-    imsize = grayframe.shape
-    print(imsize)
-
     if success:
         print("Finished")
         try:    
@@ -106,6 +110,7 @@ def calibrate_camera():
             dist_coeffs,
             imsize,
             0)
+        #new_camera_matrix = camera_matrix
         mapx, mapy = cv2.initUndistortRectifyMap(
             camera_matrix,
             dist_coeffs,
@@ -113,6 +118,7 @@ def calibrate_camera():
             new_camera_matrix,
             imsize,
             5)
+
         while True:
             ret,frame = cap.read()
             if mapx is not None and mapy is not None:
@@ -125,5 +131,27 @@ def calibrate_camera():
     cap.release()
     cv2.destroyAllWindows()
 
+def check_camera():
+    cap = cv2.VideoCapture(2)
+    cam_id = 2
+
+    while True:
+        try:
+            ret, frame = cap.read()
+            cv2.imshow('frame',frame)
+
+            if cv2.waitKey(1) & 255 == ord('q'):
+                break
+            if cv2.waitKey(1) & 255 == ord('n'):
+                cam_id+=1
+        except:
+            cam_id+=1
+
+    cap.release()
+    cv2.destroyAllWindows()
+        
+
+
 if __name__ == "__main__":
+    check_camera()
     calibrate_camera()
