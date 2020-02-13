@@ -4,7 +4,6 @@ from cv2 import aruco
 # Define your marker
 print('Define your marker')
 id = int(input('Define marker ID [int]: '))
-id = 0
 size = int(input('Define marker size in pizels [int]: '))
 aruco_dict = aruco.Dictionary_get(aruco.DICT_4X4_50)
 
