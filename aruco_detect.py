@@ -16,8 +16,8 @@ def loadCameraParams(cam_name):
         calibration_error = 0.5077483684005625
     else:
         print('Camera not found. Returning shit values.')
-        camera_matrix = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
-        camera_dist = np.array([[0.0, 0.0, 0.0, 0.0, 0.0]])
+        camera_matrix = np.array([[1000.0, 0.0, 655], [0.0, 1000.0, 380], [0.0, 0.0, 1.0]])
+        camera_dist = np.array([[-0.2, -1.3, -4285.0, -2510.0, 2.3]])
         calibration_error = 100
 
     return camera_matrix, camera_dist, calibration_error
@@ -30,7 +30,7 @@ print('OpenCV version: ',cv2.__version__)
 font = cv2.FONT_HERSHEY_PLAIN
 
 # Create VideoCapture object
-cap = cv2.VideoCapture(2) # 0 webcam, 2 rotg02
+cap = cv2.VideoCapture(2)
 
 camera_matrix, camera_dist, _ = loadCameraParams('runcam_nanolth')
 print(camera_dist)
