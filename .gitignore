@@ -1,4 +1,5 @@
 # Custom ignore
+cache/
 .vscode/
 ugly-env/
 
