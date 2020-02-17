@@ -1,0 +1,15 @@
+MAX_XVEL = 1.0
+MAX_YVEL = 1.0
+MAX_ZVEL = 1.0
+
+BLUE = (255,0,0)
+GREEN = (0,255,0)
+RED = (0,0,255)
+BLACK = (0,0,0)
+WHITE = (255,255,255)
+
+Kyaw = 0.5
+Kx = 0.1
+Ky = 0.1
+
+CAM_NR = 2
