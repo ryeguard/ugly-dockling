@@ -12,4 +12,4 @@ Kyaw = 0.5
 Kx = 0.1
 Ky = 0.1
 
-CAM_NR = 2
+CAM_NR = 0

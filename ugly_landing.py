@@ -186,23 +186,20 @@ class CrazyflieThread(threading.Thread):
 
     def run(self):
         t = threading.current_thread()
-        #--- Scan for cf
-        cflib.crtp.init_drivers(enable_debug_driver=False)
-        print('Scanning interfaces for Crazyflies...')
-        available = cflib.crtp.scan_interfaces()
+        cf, URI = init_cf()
 
-        if len(available) == 0:
-            print("No cf found, aborting cf code.")
-            cf = None
-        else: 
-            print('Crazyflies found:')
-            for i in available:
-                print(str(i[0]))
-            URI = 'radio://0/80/2M' #available[0][0]
-            cf = Crazyflie(rw_cache='./cache')
         if cf is None:
             print('Not running cf code.')
             return
+
+        aruco_dict  = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
+        parameters  = aruco.DetectorParameters_create()
+        font = cv2.FONT_HERSHEY_PLAIN
+        marker_size  = 0.1323
+
+        camera_matrix, camera_distortion, _ = loadCameraParams('webcam')
+        
+        cap, resolution = init_cv()
         
         # while not self._stopevent.isSet():
         #     print(self.ctrl_message.erroryaw)
@@ -212,19 +209,69 @@ class CrazyflieThread(threading.Thread):
         with SyncCrazyflie(URI,cf=Crazyflie(rw_cache='./cache')) as scf:
             # We take off when the commander is created
             with MotionCommander(scf) as mc:
-                mc.up(0.7,0.5)
+                mc.up(0.2,0.5)
                 while not self._stopevent.isSet():
-                    time.sleep(0.03)
-                    cmd_yaw = self.ctrl_message.erroryaw*ugly_const.Kyaw
-                    if cmd_yaw > 0.5:
-                        mc._set_vel_setpoint(0.0,0.0,0.0,-cmd_yaw)
-                    else:
-                        cmd_x = self.ctrl_message.errorx*ugly_const.Kx
-                        cmd_y = self.ctrl_message.errory*ugly_const.Ky
-                        mc._set_vel_setpoint(-cmd_y,cmd_x,0.0,-cmd_yaw)
+                    
+                    ret, frame = cap.read()
+
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+                    corners, ids, rejected = aruco.detectMarkers(image=gray, dictionary=aruco_dict, parameters=parameters, cameraMatrix=camera_matrix, distCoeff=camera_distortion)
+
+                    if ids is not None:
+                        #-- Estimate poses of detected markers
+                        rvecs, tvecs, _ = aruco.estimatePoseSingleMarkers(corners, marker_size, camera_matrix, camera_distortion)
+                        
+                        #-- Unpack the output, get only the first
+                        rvec, tvec = rvecs[0,0,:], tvecs[0,0,:]     
+
+                        #-- Draw the detected marker and put a reference frame over it
+                        aruco.drawDetectedMarkers(frame, corners)
+
+                        # Draw the detected markers axis
+                        for i in range(len(rvecs)):
+                            aruco.drawAxis(frame, camera_matrix, camera_distortion, rvecs[i,0,:], tvecs[i,0,:], 0.1)
+                        
+                        #-- Obtain the rotation matrix tag->camera
+                        R_ct = np.matrix(cv2.Rodrigues(rvec)[0])
+                        R_tc = R_ct.T
+
+                        #-- Now get Position and attitude of the camera respect to the marker
+                        pos_camera = -R_tc*np.matrix(tvec).T
+                        str_position = "Position error: x=%4.4f  y=%4.4f  z=%4.4f"%(pos_camera[0], pos_camera[1], pos_camera[2])
+                        cv2.putText(frame, str_position, (0, 20), font, 1, ugly_const.BLACK, 2, cv2.LINE_AA)
+
+                        #-- Get the attitude of the camera respect to the frame
+                        roll_camera, pitch_camera, yaw_camera = rotationMatrixToEulerAngles(R_flip*R_tc)
+                        att_camera = [math.degrees(roll_camera), math.degrees(pitch_camera), math.degrees(yaw_camera)]
+                        
+                        str_attitude = "Anglular error: roll=%4.4f  pitch=%4.4f  yaw (z)=%4.4f"%(att_camera[0],att_camera[1],att_camera[2])
+                        cv2.putText(frame, str_attitude, (0, 40), font, 1, ugly_const.BLACK, 2, cv2.LINE_AA)
+                    
+                        drawHUD(frame,resolution, yaw_camera)
+                        
+                        pos_flip = np.array([[-pos_camera[1]], [pos_camera[0]]])
+                        cmd_flip = np.array([[np.cos(yaw_camera), -np.sin(yaw_camera)], [np.sin(yaw_camera), np.cos(yaw_camera)]])
+                        #pos_cmd = cmd_flip.dot(pos_flip) #cmd_flip*pos_flip
+                        print('Position: ')
+                        print(pos_flip)
+
+                        #print(pos_cmd)
+            
+                        #mc._set_vel_setpoint(pos_cmd[0]*ugly_const.Kx, pos_cmd[1]*ugly_const.Ky, 0.0, -att_camera[2]*ugly_const.Kyaw)
+
+
+                    cv2.imshow('frame', frame)
+
+        
+                    
+                    key = cv2.waitKey(1) & 0xFF
+                    if key == ord('q'):
+                        cap.release()
+                        cv2.destroyAllWindows()
                     
                     
-                    print(cmd_x)
+                    #print(cmd_x)
                 
                 # We land when the commander goes out of scope
                 
@@ -240,19 +287,19 @@ if __name__ == '__main__':
 
     ctrl_message = controlMessage()
     
-    cv_thread = ComputerVisionThread(ctrl_message)
+    #cv_thread = ComputerVisionThread(ctrl_message)
     cf_thread = CrazyflieThread(ctrl_message)
 
     #cv_thread = threading.Thread(target=cv_thread_function, args=(ctrl_message,))
     #cf_thread = threading.Thread(target=cf_thread_function, args=(ctrl_message,))
 
-    cv_thread.start()
+    #cv_thread.start()
     cf_thread.start()
 
     #-- Stopping threads
-    cv_thread.join()
-    print('cv_thread stopped.')
-    cf_thread._stopevent.set()
+    #cv_thread.join()
+    #print('cv_thread stopped.')
+    #cf_thread._stopevent.set()
     cf_thread.join()
     print('Both threads stopped.')
 

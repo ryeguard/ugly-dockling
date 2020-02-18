@@ -212,7 +212,7 @@ class CrazyflieThread(threading.Thread):
         with SyncCrazyflie(URI,cf=Crazyflie(rw_cache='./cache')) as scf:
             # We take off when the commander is created
             with MotionCommander(scf) as mc:
-                mc.up(0.7,0.5)
+                mc.up(0.2,0.5)
                 while not self._stopevent.isSet():
                     time.sleep(0.03)
                     cmd_yaw = self.ctrl_message.erroryaw*ugly_const.Kyaw
