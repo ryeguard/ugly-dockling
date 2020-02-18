@@ -197,7 +197,7 @@ class CrazyflieThread(threading.Thread):
         font = cv2.FONT_HERSHEY_PLAIN
         marker_size  = 0.1323
 
-        camera_matrix, camera_distortion, _ = loadCameraParams('webcam')
+        camera_matrix, camera_distortion, _ = loadCameraParams('runcam_nano3')
         
         cap, resolution = init_cv()
         
@@ -209,7 +209,7 @@ class CrazyflieThread(threading.Thread):
         with SyncCrazyflie(URI,cf=Crazyflie(rw_cache='./cache')) as scf:
             # We take off when the commander is created
             with MotionCommander(scf) as mc:
-                mc.up(0.2,0.5)
+                mc.up(0.3,0.5)
                 while not self._stopevent.isSet():
                     
                     ret, frame = cap.read()
@@ -249,16 +249,20 @@ class CrazyflieThread(threading.Thread):
                         cv2.putText(frame, str_attitude, (0, 40), font, 1, ugly_const.BLACK, 2, cv2.LINE_AA)
                     
                         drawHUD(frame,resolution, yaw_camera)
-                        
-                        pos_flip = np.array([[-pos_camera[1]], [pos_camera[0]]])
-                        cmd_flip = np.array([[np.cos(yaw_camera), -np.sin(yaw_camera)], [np.sin(yaw_camera), np.cos(yaw_camera)]])
-                        #pos_cmd = cmd_flip.dot(pos_flip) #cmd_flip*pos_flip
-                        print('Position: ')
-                        print(pos_flip)
 
-                        #print(pos_cmd)
-            
-                        #mc._set_vel_setpoint(pos_cmd[0]*ugly_const.Kx, pos_cmd[1]*ugly_const.Ky, 0.0, -att_camera[2]*ugly_const.Kyaw)
+                        pos_flip = np.array([[-pos_camera.item(1)], [pos_camera.item(0)]])
+                        cmd_flip = np.array([[np.cos(yaw_camera), -np.sin(yaw_camera)], [np.sin(yaw_camera), np.cos(yaw_camera)]])
+                        pos_cmd = cmd_flip.dot(pos_flip) #cmd_flip*pos_flip
+                        
+                        print(pos_cmd)
+
+                        if np.sqrt(pos_cmd[0]*pos_cmd[0]+pos_cmd[1]*pos_cmd[1]) > 0.05:
+                            mc._set_vel_setpoint(pos_cmd[0]*ugly_const.Kx, pos_cmd[1]*ugly_const.Ky, 0.0, -att_camera[2]*ugly_const.Kyaw)
+                        elif pos_camera.item(2) > 0.1:
+                            mc._set_vel_setpoint(pos_cmd[0]*ugly_const.Kx, pos_cmd[1]*ugly_const.Ky, -0.05, -att_camera[2]*ugly_const.Kyaw)
+                        else:
+                            mc._set_vel_setpoint(pos_cmd[0]*ugly_const.Kx, pos_cmd[1]*ugly_const.Ky, 0.05, -att_camera[2]*ugly_const.Kyaw)
+                        
 
 
                     cv2.imshow('frame', frame)
