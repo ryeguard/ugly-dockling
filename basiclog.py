@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-sudo 
 #
 #     ||          ____  _ __
 #  +------+      / __ )(_) /_______________ _____  ___
@@ -78,7 +78,7 @@ class LoggingExample:
         self._lg_stab.add_variable('stabilizer.pitch', 'float')
         self._lg_stab.add_variable('stabilizer.yaw', 'float')
         self._lg_zrange = LogConfig(name='range', period_in_ms=10)
-        self._lg_zrange.add_variable('range.zrange', 'float')
+        self._lg_zrange.add_variable('range.zrange', 'uint16_t')
 
         # Adding the configuration cannot be done until a Crazyflie is
         # connected, since we need to check that the variables we
