@@ -13,6 +13,7 @@ from cflib.positioning.motion_commander import MotionCommander
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
 import ugly_const
+from ugly_syncLog import UglyLogger
 
 class controlMessage:
     def __init__(self):
@@ -63,11 +64,13 @@ def rotationMatrixToEulerAngles(R):
 
     return np.array([x, y, z])
 
+# 
 def init_cv():
     cap = cv2.VideoCapture(ugly_const.CAM_NR)
     res = (cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     return cap, res
 
+# Draws the heads up display (HUD)
 def drawHUD(frame, resolution, yaw_camera):
     midpointx = int(resolution[0]/2)
     midpointy = int(resolution[1]/2)
@@ -78,6 +81,7 @@ def drawHUD(frame, resolution, yaw_camera):
     #-- Anglometer
     cv2.ellipse(frame, (midpointx,midpointy),(10,10), -90, 0, -math.degrees(yaw_camera), ugly_const.BLACK, thickness=3)
 
+# Returns camera parameters
 def loadCameraParams(cam_name):
     if cam_name is 'runcam_nano3':
         camera_matrix = np.array([[269.11459175467655, 0.0, 318.8896785174727], [0.0, 262.62554966204, 248.54894259248005], [0.0, 0.0, 1.0]])
@@ -192,7 +196,7 @@ class CrazyflieThread(threading.Thread):
         cap, resolution = init_cv()
         t = threading.current_thread()
         cf, URI = init_cf()
-
+        
         if cf is None:
             print('Not running cf code.')
             return
@@ -216,6 +220,7 @@ class CrazyflieThread(threading.Thread):
         # print('Stopping cf')
         
         with SyncCrazyflie(URI,cf=Crazyflie(rw_cache='./cache')) as scf:
+            lgr = UglyLogger(scf)
             # We take off when the commander is created
             with MotionCommander(scf) as mc:
                 
@@ -227,7 +232,7 @@ class CrazyflieThread(threading.Thread):
 
                     corners, ids, rejected = aruco.detectMarkers(image=gray, dictionary=aruco_dict, parameters=parameters, cameraMatrix=camera_matrix, distCoeff=camera_distortion)
 
-                    if ids is not None:
+                    if ids is not None and len(ids) > 0:
 
                         #-- Draw the detected marker and put a reference frame over it
                         aruco.drawDetectedMarkers(frame, corners)
@@ -296,12 +301,8 @@ class CrazyflieThread(threading.Thread):
                         # else:
                         #     mc._set_vel_setpoint(pos_cmd[0]*ugly_const.Kx, pos_cmd[1]*ugly_const.Ky, 0.05, -att_camera[2]*ugly_const.Kyaw)
                         
-
-
                     cv2.imshow('frame', frame)
 
-        
-                    
                     key = cv2.waitKey(1) & 0xFF
                     if key == ord('q'):
                         cap.release()
@@ -312,7 +313,7 @@ class CrazyflieThread(threading.Thread):
                         zvel -= 0.1
                     
                     
-                    #print(cmd_x)
+                    
                 
                 # We land when the commander goes out of scope
                 
@@ -320,8 +321,6 @@ class CrazyflieThread(threading.Thread):
                 
         print('Stopping cf_thread')
         
-            
-
 if __name__ == '__main__':
     print('Python version: '+sys.version)
     print('OpenCV version: '+cv2.__version__)
