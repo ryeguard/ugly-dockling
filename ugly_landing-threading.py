@@ -23,10 +23,20 @@ class controlMessage:
 
 
 #-- 180 deg rotation matrix around the x axis
-R_flip  = np.zeros((3,3), dtype=np.float32)
-R_flip[0,0] = 1.0
-R_flip[1,1] =-1.0
-R_flip[2,2] =-1.0
+R_flipx  = np.zeros((3,3), dtype=np.float32)
+R_flipx[0,0] = 1.0
+R_flipx[1,1] =-1.0
+R_flipx[2,2] =-1.0
+
+#-- 90 deg rotation matrix around z axis
+R_flipz = np.zeros((3,3), dtype=np.float32)
+#
+#
+#
+
+#-- Translation relating large marker to small (8.935 cm in marker frame y direction)
+T_slide = np.zeros((3,1),dtype=np.float32)
+T_slide[1] = 0.08935
 
 # Checks if a matrix is a valid rotation matrix.
 def isRotationMatrix(R):
@@ -123,48 +133,81 @@ class ComputerVisionThread(threading.Thread):
         aruco_dict  = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
         parameters  = aruco.DetectorParameters_create()
         font = cv2.FONT_HERSHEY_PLAIN
-        marker_size  = 0.1323
+        id2find = [0, 1]
+        marker_size  = [0.112, 0.0215]
 
         camera_matrix, camera_distortion, _ = loadCameraParams('webcam')
         
         cap, resolution = init_cv()
-
+        ids_seen = [0, 0]
+        id2follow = 0
         while True:
             ret, frame = cap.read()
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
             corners, ids, rejected = aruco.detectMarkers(image=gray, dictionary=aruco_dict, parameters=parameters, cameraMatrix=camera_matrix, distCoeff=camera_distortion)
-
+            
+            
+            
             if ids is not None:
+
+                #-- Draw the detected marker and put a reference frame over it
+                aruco.drawDetectedMarkers(frame, corners)
+                
+                #-- Calculate which marker has been seen most at late
+                if 0 in ids:
+                    ids_seen[0] += 1
+                else: 
+                    ids_seen[0] = 0
+                
+                if 1 in ids:
+                    ids_seen[1] += 1
+                else: 
+                    ids_seen[1] = 0
+                
+                id2follow = np.argmax(ids_seen)
+                idx_r, idx_c = np.where(ids == id2follow)
+                
+                #-- Extract the id to follow 
+                corners = np.asarray(corners)
+                corners = corners[idx_r, :]
+               
                 #-- Estimate poses of detected markers
-                rvecs, tvecs, _ = aruco.estimatePoseSingleMarkers(corners, marker_size, camera_matrix, camera_distortion)
+                rvecs, tvecs, _ = aruco.estimatePoseSingleMarkers(corners, marker_size[id2follow], camera_matrix, camera_distortion)
                 
                 #-- Unpack the output, get only the first
                 rvec, tvec = rvecs[0,0,:], tvecs[0,0,:]     
 
-                #-- Draw the detected marker and put a reference frame over it
-                aruco.drawDetectedMarkers(frame, corners)
-
                 # Draw the detected markers axis
                 for i in range(len(rvecs)):
-                    aruco.drawAxis(frame, camera_matrix, camera_distortion, rvecs[i,0,:], tvecs[i,0,:], 0.1)
+                    aruco.drawAxis(frame, camera_matrix, camera_distortion, rvecs[i,0,:], tvecs[i,0,:], marker_size[id2follow]/2)
                 
                 #-- Obtain the rotation matrix tag->camera
                 R_ct = np.matrix(cv2.Rodrigues(rvec)[0])
                 R_tc = R_ct.T
 
                 #-- Now get Position and attitude of the camera respect to the marker
-                pos_camera = -R_tc*np.matrix(tvec).T
+                if id2follow == 0:
+                    pos_camera = -R_tc*(np.matrix(tvec).T-T_slide)
+                else:
+                    pos_camera = -R_tc*(np.matrix(tvec).T)
+
                 str_position = "Position error: x=%4.4f  y=%4.4f  z=%4.4f"%(pos_camera[0], pos_camera[1], pos_camera[2])
                 cv2.putText(frame, str_position, (0, 20), font, 1, ugly_const.BLACK, 2, cv2.LINE_AA)
 
                 #-- Get the attitude of the camera respect to the frame
-                roll_camera, pitch_camera, yaw_camera = rotationMatrixToEulerAngles(R_flip*R_tc)
+                roll_camera, pitch_camera, yaw_camera = rotationMatrixToEulerAngles(R_flipx*R_tc)
                 str_attitude = "Anglular error: roll=%4.4f  pitch=%4.4f  yaw (z)=%4.4f"%(math.degrees(roll_camera),math.degrees(pitch_camera),math.degrees(yaw_camera))
                 cv2.putText(frame, str_attitude, (0, 40), font, 1, ugly_const.BLACK, 2, cv2.LINE_AA)
             
                 drawHUD(frame,resolution, yaw_camera)
+                pos_flip = np.array([[-pos_camera.item(1)], [pos_camera.item(0)]])
+
+                cmd_flip = np.array([[np.cos(yaw_camera), -np.sin(yaw_camera)], [np.sin(yaw_camera), np.cos(yaw_camera)]])
+                pos_cmd = cmd_flip.dot(pos_flip) #cmd_flip*pos_flip
+                #print('pos_cmd: ')
+                #print(pos_cmd)
 
                 self.ctrl_message.errorx = pos_camera[0]
                 self.ctrl_message.errory = pos_camera[1]

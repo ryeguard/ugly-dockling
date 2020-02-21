@@ -9,7 +9,7 @@ BLACK = (0,0,0)
 WHITE = (255,255,255)
 
 Kyaw = 0.5
-Kx = 0.1
-Ky = 0.1
+Kx = 0.2
+Ky = 0.2
 
-CAM_NR = 0
+CAM_NR = 2
