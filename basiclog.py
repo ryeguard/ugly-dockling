@@ -64,7 +64,8 @@ class LoggingExample:
         # Variable used to keep main loop occupied until disconnect
         self.is_connected = True
 
-        open("logFile.txt", 'w').close()
+        open("logFile.txt", 'w').close() #opens file to erase content
+        open("logz.txt", 'w').close() #opens file to erase content
 
     def _connected(self, link_uri):
         """ This callback is called form the Crazyflie API when a Crazyflie
@@ -76,18 +77,24 @@ class LoggingExample:
         self._lg_stab.add_variable('stabilizer.roll', 'float')
         self._lg_stab.add_variable('stabilizer.pitch', 'float')
         self._lg_stab.add_variable('stabilizer.yaw', 'float')
+        self._lg_zrange = LogConfig(name='range', period_in_ms=10)
+        self._lg_zrange.add_variable('range.zrange', 'float')
 
         # Adding the configuration cannot be done until a Crazyflie is
         # connected, since we need to check that the variables we
         # would like to log are in the TOC.
         try:
             self._cf.log.add_config(self._lg_stab)
+            self._cf.log.add_config(self._lg_zrange)
             # This callback will receive the data
             self._lg_stab.data_received_cb.add_callback(self._stab_log_data)
+            self._lg_zrange.data_received_cb.add_callback(self._zrange_log_data)
             # This callback will be called on errors
             self._lg_stab.error_cb.add_callback(self._stab_log_error)
+            self._lg_zrange.error_cb.add_callback(self._zrange_log_error)
             # Start the logging
             self._lg_stab.start()
+            self._lg_zrange.start()
         except KeyError as e:
             print('Could not start log configuration,'
                   '{} not found in TOC'.format(str(e)))
@@ -102,10 +109,25 @@ class LoggingExample:
         """Callback from the log API when an error occurs"""
         print('Error when logging %s: %s' % (logconf.name, msg))
 
+    def _zrange_log_error(self, logconf, msg):
+        """Callback from the log API when an error occurs"""
+        print('Error when logging %s: %s' % (logconf.name, msg))
+
+    def _zrange_log_data(self, timestamp, data, logconf):
+        """Callback from the log API when data arrives"""
+
+	#added the part below /L
+        #writes the timestamp and data to a txt file
+        with open("logz.txt", "a") as file:
+            file.write(str(timestamp) + "," + str(data) +"\n")
+
+        print('[%d]: %s' % (timestamp, data))
+
     def _stab_log_data(self, timestamp, data, logconf):
         """Callback from the log API when data arrives"""
-	#added the part below /L
 
+	#added the part below /L
+        #writes the timestamp and data to a txt file
         with open("logFile.txt", "a") as file:
             file.write(str(timestamp) + "," + str(data) +"\n")
 
