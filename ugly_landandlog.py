@@ -18,7 +18,7 @@ from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 import ugly_const
 
 #logging
-from logging import logger 
+from ugly_log import logger 
 
 class controlMessage:
     def __init__(self):
