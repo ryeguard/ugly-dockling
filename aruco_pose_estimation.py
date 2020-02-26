@@ -106,7 +106,7 @@ def loadCameraParams(cam_name):
 
     return camera_matrix, camera_dist, calibration_error
 
-camera_matrix, camera_distortion, _   = loadCameraParams('webcam')
+camera_matrix, camera_distortion, _   = loadCameraParams('runcam_nano3')
 
 #--- 180 deg rotation matrix around the x axis
 R_flip  = np.zeros((3,3), dtype=np.float32)
