@@ -5,7 +5,7 @@ from cv2 import aruco
 print('Define your marker')
 id = int(input('Define marker ID [int]: '))
 size = int(input('Define marker size in pizels [int]: '))
-aruco_dict = aruco.Dictionary_get(aruco.DICT_4X4_50)
+aruco_dict = aruco.Dictionary_get(aruco.DICT_4X4_1000)
 
 # Generate, save and show
 img = aruco.drawMarker(aruco_dict,id,size)
