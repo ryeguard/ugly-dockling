@@ -1,5 +1,10 @@
 import matplotlib.pyplot as plt
+import datetime
+import shutil
 import numpy as np
+
+#-- Define the file name
+fileName = 'ugly_log copy.txt'
 
 # with open('logFile.txt', 'r') as infile, open('logFileNew.txt', 'w') as outfile:
 #     #temp = infile.read().replace(':', "") #'[^a-zA-Z0-9_]'
@@ -22,10 +27,10 @@ import numpy as np
 #     temp = temp.replace("range.zrange ", "")
 #     outfile.write(temp)
 
-with open("ugly_log.txt") as file:
+with open(fileName) as file:
     next(file)
 
-time_stab, roll, pitch, yaw, height = np.loadtxt('ugly_log.txt', delimiter=',', unpack=True)
+time_stab, roll, pitch, yaw, height = np.loadtxt(fileName, delimiter=',', unpack=True)
 #time_z, z = np.loadtxt('logznew.txt', delimiter=',', unpack=True)
 #plt.plot(time,roll, label='Roll')
 
@@ -40,9 +45,17 @@ axs[2].set_title('Yaw')
 axs[3].plot(time_stab, height, 'tab:blue')
 axs[3].set_title('Height')
 
-
 #plt.xlabel('time')
 #plt.ylabel('Roll')
 #plt.title('Interesting Graph\nCheck it out')
 #plt.legend()
+
+#-- Save figure as png
+now = datetime.datetime.now()
+date = now.strftime("%Y-%m-%d %H:%M")
+plt.savefig('figures/uglyPlotter_'+date+'.png')
+
+#-- Copy textfile as backup with same name
+shutil.copy(fileName,'figures/uglyPlotter_'+date+'.txt')
+
 plt.show()
