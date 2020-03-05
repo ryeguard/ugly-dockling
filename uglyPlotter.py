@@ -4,7 +4,7 @@ import shutil
 import numpy as np
 
 #-- Define the file name
-fileName = 'ugly_log copy.txt'
+fileName = 'ugly_log.txt'
 
 # with open('logFile.txt', 'r') as infile, open('logFileNew.txt', 'w') as outfile:
 #     #temp = infile.read().replace(':', "") #'[^a-zA-Z0-9_]'
@@ -30,11 +30,11 @@ fileName = 'ugly_log copy.txt'
 with open(fileName) as file:
     next(file)
 
-time_stab, roll, pitch, yaw, height = np.loadtxt(fileName, delimiter=',', unpack=True)
+time_stab, roll, pitch, yaw, height, heightRead = np.loadtxt(fileName, delimiter=',', unpack=True)
 #time_z, z = np.loadtxt('logznew.txt', delimiter=',', unpack=True)
 #plt.plot(time,roll, label='Roll')
 
-fig, axs = plt.subplots(4)
+fig, axs = plt.subplots(5)
 fig.suptitle('IMU- and z-data')
 axs[0].plot(time_stab, roll, 'tab:orange')
 axs[0].set_title('Roll')
@@ -44,6 +44,8 @@ axs[2].plot(time_stab, yaw, 'tab:red')
 axs[2].set_title('Yaw')
 axs[3].plot(time_stab, height, 'tab:blue')
 axs[3].set_title('Height')
+axs[4].plot(time_stab, heightRead, 'tab:blue')
+axs[4].set_title('HeightRead')
 
 #plt.xlabel('time')
 #plt.ylabel('Roll')
@@ -52,7 +54,7 @@ axs[3].set_title('Height')
 
 #-- Save figure as png
 now = datetime.datetime.now()
-date = now.strftime("%Y-%m-%d %H:%M")
+date = now.strftime("%Y-%m-%d_%H:%M")
 plt.savefig('figures/uglyPlotter_'+date+'.png')
 
 #-- Copy textfile as backup with same name
