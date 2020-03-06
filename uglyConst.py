@@ -1,7 +1,7 @@
 #-- 
 
 #-- OpenCV settings
-CAM_NR = 0
+CAM_NR = 2
 MARKER_OFFSET = 0.08935
 MARKERSIZE_SMALL = 0.0215
 MARKERSIZE_BIG = 0.112
@@ -14,7 +14,14 @@ BLACK = (0,0,0)
 WHITE = (255,255,255)
 
 #-- State machine
-TAKEOFF_HEIGHT = 0.5    
+TAKEOFF_HEIGHT = 0.5   
+TAKEOFF_ZVEL = 0.5 
+APPROACH_ZVEL = 0.05
+FAR_DIST = 0.05
+FAR_ANGL = 1.0
+
+LANDING_HEIGHT = 0.1
+
 DIST_IGE = 0.2          # [m]
 DIST_IGE_HYST = 0.01
 R_CYLINDER = 0.05       # radius of x,y [m]
