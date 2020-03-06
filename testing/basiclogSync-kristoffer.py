@@ -50,7 +50,7 @@ if __name__ == '__main__':
 
     conf = LogConfig(name='flow', period_in_ms=10)
     conf.add_variable('range.zrange', 'uint16_t')
-    conf.add_variable('zranger2.smplRate', 'float')
+    #conf.add_variable('zranger2.smplRate', 'float')
 
     cf = Crazyflie(rw_cache='./cache')
     with SyncCrazyflie(uri, cf=cf) as scf:
