@@ -1,4 +1,6 @@
-#-- 
+#-- CONSTANTS FOR UGLY-DOCKLING
+# All time is in seconds. 
+# All distances/velocities are in meters/meters per second.
 
 #-- OpenCV settings
 CAM_NR = 2
@@ -14,20 +16,27 @@ BLACK = (0,0,0)
 WHITE = (255,255,255)
 
 #-- State machine
-TAKEOFF_HEIGHT = 0.5   
+TAKEOFF_HEIGHT = 0.7
 TAKEOFF_ZVEL = 0.5 
 APPROACH_ZVEL = 0.05
-FAR_DIST = 0.05
+FAR_DIST = 0.025
 FAR_ANGL = 1.0
 
-LANDING_HEIGHT = 0.1
+FAR_CONE = 1.0
 
-DIST_IGE = 0.2          # [m]
-DIST_IGE_HYST = 0.01
-R_CYLINDER = 0.05       # radius of x,y [m]
+LANDING_HEIGHT = 0.15
+LANDING_ZVEL = 0.2
+LADNING_DIST = 0.01
+
+DIST_IGE = 0.2
+DIST_IGE_HYST = 0.05
+R_CYLINDER = 0.05
 R_CYLINDER_HYST = 0.04     
 
 #-- Control parameters
+CTRL_NONE = 0           # no landing control, just vertical velocity=LANDING_ZVEL
+CTRL_POSD = 1
+
 Kyaw = 1.0
 Kx = 0.2
 Ky = 0.2

@@ -1,33 +1,5 @@
-# -*- coding: utf-8 -*-
-#
-#     ||          ____  _ __
-#  +------+      / __ )(_) /_______________ _____  ___
-#  | 0xBC |     / __  / / __/ ___/ ___/ __ `/_  / / _ \
-#  +------+    / /_/ / / /_/ /__/ /  / /_/ / / /_/  __/
-#   ||  ||    /_____/_/\__/\___/_/   \__,_/ /___/\___/
-#
-#  Copyright (C) 2016 Bitcraze AB
-#
-#  Crazyflie Nano Quadcopter Client
-#
-#  This program is free software; you can redistribute it and/or
-#  modify it under the terms of the GNU General Public License
-#  as published by the Free Software Foundation; either version 2
-#  of the License, or (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software
-#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
-#  MA  02110-1301, USA.
 """
-Simple example that connects to the first Crazyflie found, logs the Stabilizer
-and prints it to the console. After 10s the application disconnects and exits.
-
-This example utilizes the SyncCrazyflie and SyncLogger classes.
+A class that logs the stabilizer and ranger data of a Crazyflie
 """
 import logging
 import time
@@ -36,64 +8,106 @@ import cflib.crtp
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
+from cflib.positioning.motion_commander import MotionCommander
 
 # Only output errors from the logging framework
 logging.basicConfig(level=logging.ERROR)
 open("ugly_log.txt","w")
+open("ugly_logz.txt","w")
+
 
 class UglyLogger:
-    def __init__(self,scf):
+
+    def __init__(self, link_uri, scf, f):
+        self._cf = Crazyflie(rw_cache='./cache')
         self._scf = scf
         self.start_logging(self._scf)
-
+        self._file = f
+        self._latestHeight = 0.0
+        self._heightRead = 0
+    
+        self.start_logging(scf)
+        
     def log_callback(self, timestamp, data, logconf):
         roll = data['stabilizer.roll']
         pitch = data['stabilizer.pitch']
         yaw = data['stabilizer.yaw']
-        height = data['range.zrange']
-        with open("ugly_log.txt","a") as file:
-            file.write("%d,%0.4f,%0.4f,%0.4f,%0.4f\n" % (timestamp,roll,pitch,yaw,height))
-        print("WOW")
+        height = data['range.zrange'] # [mm]
+        self._latestHeight = height
+        self._file.write("%d,%0.4f,%0.4f,%0.4f,%0.4f,%0.4f\n" % (timestamp,roll,pitch,yaw,height,self._heightRead))
+
+
+    # def logz_callback(self, timestamp, data, logconf):
+    #     height = data['range.zrange']
+    #     #file = open("ugly_logz.txt","a")
+    #     self._file.write("%d,%0.4f\n" % (timestamp,height))
+    #     #file.close()
+
+    #     #with open("ugly_logz.txt","a") as file:
+    #     #    file.write("%d,%0.4f\n" % (timestamp,height))
+    #     #print("WOOOW")
 
     def start_logging(self,scf):
-        with open("ugly_log.txt","a") as file:
-            file.write("timestamp,roll,pitch,yaw,height\n")
+        #with open("ugly_log.txt","a") as file:
+        #    file.write("timestamp,roll,pitch,yaw,height\n")
 
         log_conf = LogConfig(name='logdata', period_in_ms=10)
         log_conf.add_variable('stabilizer.roll', 'float')
         log_conf.add_variable('stabilizer.pitch', 'float')
         log_conf.add_variable('stabilizer.yaw', 'float')
-        
-        loga_conf.add_variable('range.zrange','float')
+        log_conf.add_variable('range.zrange', 'uint16_t')
+    
+        #param_conf.add_variable('posCtl.VZp')
+        #param_conf.add_variable('posCtl.VZi')
+        #param_conf.add_variable('posCtl.VZd')
+
+        #logz_conf = LogConfig(name='logzdata', period_in_ms=25)
+        #logz_conf.add_variable('range.zrange','float')
 
         scf.cf.log.add_config(log_conf)
+  
         log_conf.data_received_cb.add_callback(self.log_callback)
+
+        #logz_conf.data_received_cb.add_callback(self.logz_callback)
         
         log_conf.start()
 
+        #logz_conf.start()
 
-if __name__ == '__main__':
-    # Initialize the low-level drivers (don't list the debug drivers)
-    cflib.crtp.init_drivers(enable_debug_driver=False)
-    # Scan for Crazyflies and use the first one found
-    print('Scanning interfaces for Crazyflies...')
-    available = cflib.crtp.scan_interfaces()
-    print('Crazyflies found:')
-    for i in available:
-        print(i[0])
+    def getHeight(self):
+        if self._heightRead == 0:
+            self._heightRead = 1
+        else:
+            self._heightRead = 0
+        return self._latestHeight/1000 # convert to m
 
-    if len(available) == 0:
-        print('No Crazyflies found, cannot run example')
-    else:
+
+# if __name__ == '__main__':
+#     # Initialize the low-level drivers (don't list the debug drivers)
+#     cflib.crtp.init_drivers(enable_debug_driver=False)
+
+#     # Scan for Crazyflies and use the first one found
+#     print('Scanning interfaces for Crazyflies...')
+#     available = cflib.crtp.scan_interfaces()
+#     print('Crazyflies found:')
+#     for i in available:
+#         print(i[0])
+
+#     if len(available) == 0:
+#         print('No Crazyflies found, cannot run example')
+#     else:
         
 
-        cf = Crazyflie(rw_cache='./cache')
-        with SyncCrazyflie(available[0][0], cf=cf) as scf:
-            lgr = UglyLogger(scf)
-            lgr.start_logging(scf)
-            endTime = time.time()+1
-            while True:
-
-                if time.time() > endTime:
-                    break
+#         cf = Crazyflie(rw_cache='./cache')
+#         with open("ugly_log.txt","a") as file:
+#             with SyncCrazyflie(available[0][0], cf=cf) as scf:
                 
+
+#                 lgr = UglyLogger(available[0][0],scf,file)
+#                 #lgr.start_logging(scf)
+#                 endTime = time.time()+5
+#                 while 1:
+
+#                     if time.time() > endTime:
+#                         break
+                    
