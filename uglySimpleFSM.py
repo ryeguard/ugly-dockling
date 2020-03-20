@@ -1,6 +1,7 @@
 import numpy as np
 import sys, time, math, timeit
 import threading
+from threading import Barrier
 
 # OpenCV & Aruco
 import cv2 as cv2
@@ -30,6 +31,8 @@ class controlMessage:
 class stateMessage:
     def __init__(self):
         self.isMarkerDetected = False
+        self.roll = 0.0
+        self.pitch = 0.0
 
 #-- 180 deg rotation matrix around the x axis
 R_flipx  = np.zeros((3,3), dtype=np.float32)
@@ -74,46 +77,31 @@ def rotationMatrixToEulerAngles(R):
 
     return np.array([x, y, z])
 
-
-def init_cf():
-    #--- Scan for cf
-    cflib.crtp.init_drivers(enable_debug_driver=False)
-    print('Scanning interfaces for Crazyflies...')
-    available = cflib.crtp.scan_interfaces()
-
-    if len(available) == 0:
-        print("No cf found, aborting cf code.")
-        return None, None
-    else: 
-        print('Crazyflies found:')
-        for i in available:
-            print(str(i[0]))
-        URI = 'radio://0/80/2M' #str(available[0])
-        cf = Crazyflie(rw_cache='./cache')
-    
-        return cf, URI
-
-
 class ComputerVisionThread(threading.Thread):
-    def __init__(self,ctrl_message, state_message, message_lock):
+    def __init__(self,ctrl_message, state_message, message_lock, barrier):
         """ constructor, setting initial variables """
         super(ComputerVisionThread,self).__init__()
         self.ctrl = ctrl_message
         self.state = state_message
         self.lock = message_lock
+        self.b = barrier
 
     def init_cv(self):
         cap = cv2.VideoCapture(uglyConst.CAM_NR)
         res = (cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         return cap, res
 
-    def drawHUD(self, frame, resolution, yaw_camera):
+    def draw_str(self, dst, x, y, s):
+        cv2.putText(dst, s, (x+1, y+1), cv2.FONT_HERSHEY_PLAIN, 1.0, (0, 0, 0), thickness = 2, lineType=cv2.LINE_AA)
+        cv2.putText(dst, s, (x, y), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), lineType = cv2.LINE_AA)
+
+    def draw_HUD(self, frame, resolution, yaw_camera):
         midpointx = int(resolution[0]/2)
         midpointy = int(resolution[1]/2)
 
         #-- Error crosshair
         cv2.drawMarker(frame, (midpointx-self.ctrl.errory*200,midpointy-self.ctrl.errorx*200),uglyConst.RED, markerType=cv2.MARKER_CROSS, thickness=2)
-
+        
         #-- Anglometer
         cv2.ellipse(frame, (midpointx,midpointy),(10,10), -90, 0, -math.degrees(yaw_camera), uglyConst.BLACK, thickness=3)
 
@@ -150,14 +138,14 @@ class ComputerVisionThread(threading.Thread):
             frame = cv2.remap(frame, mapx, mapy, cv2.INTER_LINEAR)
             return True, frame
         else: 
-            return False, None
+            return False, frame
 
     def run(self):
         aruco_dict  = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
         parameters  = aruco.DetectorParameters_create()
         parameters.errorCorrectionRate = 1
         font = cv2.FONT_HERSHEY_PLAIN
-        id2find = [10, 17] 
+        id2find = [uglyConst.MARKERID_BIG, uglyConst.MARKERID_SMALL] 
         marker_size  = [uglyConst.MARKERSIZE_BIG, uglyConst.MARKERSIZE_SMALL]
 
         camera_matrix, camera_distortion, _ = self.loadCameraParams('runcam_nano3')
@@ -167,13 +155,20 @@ class ComputerVisionThread(threading.Thread):
         id2follow = 0
         sumTime = 0.0
         frameCount = 0
+        logFile = open("cv_log.txt","w")
+
+        self.b.wait() # barrier to wait for CF thread
+        startTime = time.time()*1000
         
         while True:
             t0 = time.time() # start time for fps calculation
             ret, frame = cap.read()
-            
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
+            #-- Convert to grayscale and undistort image           
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            ret, frame = self.undist_frame(frame, camera_matrix, camera_distortion, resolution)
+
+            #-- Detect markers
             corners, ids, rejected = aruco.detectMarkers(image=gray, dictionary=aruco_dict, parameters=parameters, cameraMatrix=camera_matrix, distCoeff=camera_distortion)
             
             if ids is not None:
@@ -205,7 +200,7 @@ class ComputerVisionThread(threading.Thread):
                 
                 if rvecs is not None:
                     #-- Unpack the output, get only the first
-                    rvec, tvec = rvecs[0,0,:], tvecs[0,0,:]     
+                    rvec, tvec = rvecs[0,0,:], tvecs[0,0,:] 
 
                     #-- Draw the detected markers axis
                     for i in range(len(rvecs)):
@@ -232,15 +227,19 @@ class ComputerVisionThread(threading.Thread):
                     self.ctrl.errory = pos_cmd[1]
                     self.ctrl.errorz = pos_camera[2]
                     self.ctrl.erroryaw = math.degrees(yaw_camera)
+                    #self.state.roll = math.degrees(roll_camera)
+                    #self.state.pitch = math.degrees(pitch_camera)
                     self.lock.release()
+                    currentTime = time.time()*1000-startTime
+                    logFile.write("%f,%f,%f,%f,%f,%f,%f,%d\n" % (currentTime,pos_cmd[0],pos_cmd[1],pos_camera[2],math.degrees(roll_camera),math.degrees(pitch_camera),math.degrees(yaw_camera), id2follow))
 
                     #-- Draw some information on frame
                     str_position = "Pos: x=%4.4f  y=%4.4f  z=%4.4f"%(pos_camera[0], pos_camera[1], pos_camera[2])
-                    cv2.putText(frame, str_position, (0, 40), font, 1, uglyConst.BLACK, 2, cv2.LINE_AA)
+                    self.draw_str(frame, 0,40, str_position)
                     str_attitude = "Att: roll=%4.4f  pitch=%4.4f  yaw (z)=%4.4f"%(math.degrees(roll_camera),math.degrees(pitch_camera),math.degrees(yaw_camera))
-                    cv2.putText(frame, str_attitude, (0, 60), font, 1, uglyConst.BLACK, 2, cv2.LINE_AA)
+                    self.draw_str(frame, 0, 60, str_attitude)
                     
-                    self.drawHUD(frame, resolution, yaw_camera)
+                    self.draw_HUD(frame, resolution, yaw_camera)
             
             else:
                 self.lock.acquire()
@@ -253,7 +252,7 @@ class ComputerVisionThread(threading.Thread):
             frameCount += 1
 
             str_fps = "Cur FPS: %4.4f, Avg FPS: %4.4f" %(1.0/(t1-t0), (frameCount/sumTime))
-            cv2.putText(frame, str_fps, (0,20), font, 1, uglyConst.BLACK, 2, cv2.LINE_AA)
+            self.draw_str(frame, 0, 20, str_fps)
 
             #-- Middle crosshair
             cv2.drawMarker(frame, (int(resolution[0]/2),int(resolution[1]/2)),(0,0,0), markerType=cv2.MARKER_CROSS, thickness=2)
@@ -271,10 +270,11 @@ class ComputerVisionThread(threading.Thread):
                     self.save_frame(frame, 'rect')
                 cap.release()
                 cv2.destroyAllWindows()
+                logFile.close()
                 print("Pressed 'Q' to exit CV thread.")
  
 class CrazyflieThread(threading.Thread):
-    def __init__(self, ctrl_message, state_message, message_lock):
+    def __init__(self, ctrl_message, state_message, message_lock, barrier):
         threading.Thread.__init__(self)
         self.ctrl = ctrl_message
         self.state = state_message
@@ -285,6 +285,7 @@ class CrazyflieThread(threading.Thread):
         self.runSM = True
         self.cmd_height_old = uglyConst.TAKEOFF_HEIGHT
         self.landingController = uglyConst.CTRL_NONE # see uglyConst for controller choice
+        self.b = barrier
 
     def raise_exception(self):
         self.runSM = False
@@ -325,6 +326,7 @@ class CrazyflieThread(threading.Thread):
             self.cf = Crazyflie(rw_cache='./cache')
         
         if self.cf is None:
+            self.b.wait()
             print('Not running cf code.')
             return None
         
@@ -332,6 +334,9 @@ class CrazyflieThread(threading.Thread):
         self.scf.open_link()
         self.mc = MotionCommander(self.scf)
         self.file = open("ugly_log.txt","a")
+
+        #-- Barrier to wait for CV thread
+        self.b.wait()
         self.lgr = UglyLogger(self.URI, self.scf, self.file)
 
         self.enterTakingOff()
@@ -361,7 +366,7 @@ class CrazyflieThread(threading.Thread):
             return self.stateSeeking
 
     def stateNearing(self):
-        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, 0.0)
+        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
         print("stateNearing")
         
         if not self.state.isMarkerDetected:
@@ -375,9 +380,10 @@ class CrazyflieThread(threading.Thread):
     def stateApproaching(self):
         print("stateApproaching")
         self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, -uglyConst.APPROACH_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
+        
         if not self.isCloseCone:
             return self.stateNearing
-        if self.mc._thread.get_height() < (uglyConst.DIST_IGE - uglyConst.DIST_IGE_HYST):
+        elif self.mc._thread.get_height() < (uglyConst.DIST_IGE - uglyConst.DIST_IGE_HYST):
             if self.landingController == uglyConst.CTRL_NONE:
                 return self.stateLandning
             elif self.landingController == uglyConst.CTRL_POSD:
@@ -389,7 +395,7 @@ class CrazyflieThread(threading.Thread):
 
     def stateLandning(self):
         print("stateLanding")
-        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, -uglyConst.LANDING_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
+        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx*2.0, self.ctrl.errory*uglyConst.Ky*2.0, -uglyConst.LANDING_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
 
         if self.mc._thread.get_height() > (uglyConst.DIST_IGE + uglyConst.DIST_IGE_HYST):
             return self.stateApproaching
@@ -431,7 +437,7 @@ class CrazyflieThread(threading.Thread):
 
     def exitLanding(self):
         print("exitLandning")
-        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
+        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx*2.0, self.ctrl.errory*uglyConst.Ky*2.0, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
         
         if self.isCloseXYP(uglyConst.LADNING_DIST):
             self.mc.stop()
@@ -468,9 +474,11 @@ if __name__ == '__main__':
     state_message = stateMessage()
     ctrl_message = controlMessage()
     message_lock = threading.Lock()
+
+    b = Barrier(2)
     
-    cv_thread = ComputerVisionThread(ctrl_message, state_message, message_lock)
-    cf_thread = CrazyflieThread(ctrl_message, state_message, message_lock)
+    cv_thread = ComputerVisionThread(ctrl_message, state_message, message_lock, b)
+    cf_thread = CrazyflieThread(ctrl_message, state_message, message_lock, b)
 
     #-- Starting threads
     cv_thread.start()
