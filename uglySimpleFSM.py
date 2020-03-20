@@ -31,6 +31,8 @@ class controlMessage:
 class stateMessage:
     def __init__(self):
         self.isMarkerDetected = False
+        self.position = np.array([0.0, 0.0, 0.0])
+        self.attidtude = np.array([0.0, 0.0, 0.0])
         self.roll = 0.0
         self.pitch = 0.0
 
@@ -88,7 +90,7 @@ class ComputerVisionThread(threading.Thread):
 
     def init_cv(self):
         cap = cv2.VideoCapture(uglyConst.CAM_NR)
-        res = (cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        res = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         return cap, res
 
     def draw_str(self, dst, x, y, s):
@@ -103,7 +105,7 @@ class ComputerVisionThread(threading.Thread):
         cv2.drawMarker(frame, (midpointx-self.ctrl.errory*200,midpointy-self.ctrl.errorx*200),uglyConst.RED, markerType=cv2.MARKER_CROSS, thickness=2)
         
         #-- Anglometer
-        cv2.ellipse(frame, (midpointx,midpointy),(10,10), -90, 0, -math.degrees(yaw_camera), uglyConst.BLACK, thickness=3)
+        cv2.ellipse(frame, (midpointx,midpointy), (10,10), -90, 0, -math.degrees(yaw_camera), uglyConst.BLACK, thickness=3)
 
     def loadCameraParams(self, cam_name):
         if cam_name is 'runcam_nano3':
@@ -156,6 +158,7 @@ class ComputerVisionThread(threading.Thread):
         sumTime = 0.0
         frameCount = 0
         logFile = open("cv_log.txt","w")
+        posx = posy = 0.0
 
         self.b.wait() # barrier to wait for CF thread
         startTime = time.time()*1000
@@ -166,7 +169,7 @@ class ComputerVisionThread(threading.Thread):
 
             #-- Convert to grayscale and undistort image           
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            ret, frame = self.undist_frame(frame, camera_matrix, camera_distortion, resolution)
+            #ret, frame = self.undist_frame(frame, camera_matrix, camera_distortion, resolution)
 
             #-- Detect markers
             corners, ids, rejected = aruco.detectMarkers(image=gray, dictionary=aruco_dict, parameters=parameters, cameraMatrix=camera_matrix, distCoeff=camera_distortion)
@@ -216,15 +219,24 @@ class ComputerVisionThread(threading.Thread):
                     else:
                         pos_camera = -R_tc*(np.matrix(tvec).T)
 
+                    self.state.position = np.array(pos_camera)
+                    
+
                     #-- Get the attitude of the camera respect to the frame
                     roll_camera, pitch_camera, yaw_camera = rotationMatrixToEulerAngles(R_flipx*R_tc)
+                    att_camera = [math.degrees(roll_camera), math.degrees(pitch_camera), math.degrees(yaw_camera)]
+                    self.state.attitude = np.array(att_camera)
+
                     pos_flip = np.array([[-pos_camera.item(1)], [pos_camera.item(0)]])
                     cmd_flip = np.array([[np.cos(yaw_camera), -np.sin(yaw_camera)], [np.sin(yaw_camera), np.cos(yaw_camera)]])
                     pos_cmd = cmd_flip.dot(pos_flip)
 
+                    posx = posx*0.9 + pos_cmd[0]*0.1
+                    posy = posy*0.9 + pos_cmd[1]*0.1
+
                     self.lock.acquire()
-                    self.ctrl.errorx = pos_cmd[0]
-                    self.ctrl.errory = pos_cmd[1]
+                    self.ctrl.errorx = posx
+                    self.ctrl.errory = posy
                     self.ctrl.errorz = pos_camera[2]
                     self.ctrl.erroryaw = math.degrees(yaw_camera)
                     #self.state.roll = math.degrees(roll_camera)
@@ -236,7 +248,7 @@ class ComputerVisionThread(threading.Thread):
                     #-- Draw some information on frame
                     str_position = "Pos: x=%4.4f  y=%4.4f  z=%4.4f"%(pos_camera[0], pos_camera[1], pos_camera[2])
                     self.draw_str(frame, 0,40, str_position)
-                    str_attitude = "Att: roll=%4.4f  pitch=%4.4f  yaw (z)=%4.4f"%(math.degrees(roll_camera),math.degrees(pitch_camera),math.degrees(yaw_camera))
+                    str_attitude = "Att: roll=%4.4f  pitch=%4.4f  yaw (z)=%4.4f"%(att_camera[0],att_camera[1],att_camera[2])
                     self.draw_str(frame, 0, 60, str_attitude)
                     
                     self.draw_HUD(frame, resolution, yaw_camera)
@@ -366,7 +378,7 @@ class CrazyflieThread(threading.Thread):
             return self.stateSeeking
 
     def stateNearing(self):
-        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
+        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, 0.0) #-self.ctrl.erroryaw*uglyConst.Kyaw)
         print("stateNearing")
         
         if not self.state.isMarkerDetected:
@@ -439,7 +451,7 @@ class CrazyflieThread(threading.Thread):
         print("exitLandning")
         self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx*2.0, self.ctrl.errory*uglyConst.Ky*2.0, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
         
-        if self.isCloseXYP(uglyConst.LADNING_DIST):
+        if self.isCloseXYP(uglyConst.LANDING_DIST):
             self.mc.stop()
             self.mc.land()
             return self.stateLanded
