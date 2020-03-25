@@ -18,19 +18,21 @@ BLACK = (0,0,0)
 WHITE = (255,255,255)
 
 #-- State machine
-TAKEOFF_HEIGHT = 0.7
+TAKEOFF_HEIGHT = 0.8
 TAKEOFF_ZVEL = 0.5 
 APPROACH_ZVEL = 0.1
 FAR_DIST = 0.025
 FAR_ANGL = 1.0
 
-FAR_CONE = 1.0
+FAR_CONE = 3.0
 
-LANDING_HEIGHT = 0.1
+POSE_HEIGHT = 0.4
+
+LANDING_HEIGHT = 0.05
 LANDING_ZVEL = 0.05
-LANDING_DIST = 0.01
+LANDING_DIST = 0.005
 
-DIST_IGE = 0.3
+DIST_IGE = 0.15
 DIST_IGE_HYST = 0.05
 R_CYLINDER = 0.05
 R_CYLINDER_HYST = 0.04     
@@ -38,11 +40,16 @@ R_CYLINDER_HYST = 0.04
 #-- Control parameters
 CTRL_NONE = 0           # no landing control, just vertical velocity=LANDING_ZVEL
 CTRL_POSD = 1
+CTRL_PIX = 2
 
-Kyaw = 1.0
+Kyaw = 0.5
 Kx = 0.2
 Ky = 0.2
-Kz = 40
+Kz = 1.0
+
+PIX_Kx = 0.001
+PIX_Ky = 0.001
+PIX_Kz = 5.0
 
 velKp = 25.0
 velKi = 15.0

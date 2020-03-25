@@ -25,12 +25,15 @@ class controlMessage:
         self.errorx = 0.0
         self.errory = 0.0
         self.errorz = 0.0
+        self.errorpixx = 0.0
+        self.errorpixy = 0.0
         self.erroryaw = 0.0
         self.cmd_zvel = 0.0
 
 class stateMessage:
     def __init__(self):
         self.isMarkerDetected = False
+        self.cv_mode = uglyConst.CTRL_PIX
         self.position = np.array([0.0, 0.0, 0.0])
         self.attidtude = np.array([0.0, 0.0, 0.0])
         self.roll = 0.0
@@ -58,11 +61,18 @@ def isRotationMatrix(R):
     n = np.linalg.norm(I - shouldBeIdentity)
     return n < 1e-6
 
+def isRotationArray(R):
+    Rt = R.transpose()
+    shouldBeIdentity = np.dot(Rt, R)
+    I = np.identity(3)
+    n = np.linalg.norm(I - shouldBeIdentity)
+    return n < 1e-6
+
 # Calculates rotation matrix to euler angles
 # The result is the same as MATLAB except the order
 # of the euler angles ( x and z are swapped ).
 def rotationMatrixToEulerAngles(R):
-    assert (isRotationMatrix(R))
+    assert (isRotationArray(np.array(R)))
 
     sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
 
@@ -78,6 +88,25 @@ def rotationMatrixToEulerAngles(R):
         z = 0
 
     return np.array([x, y, z])
+
+def rotationArrayToEulerAngles(R):
+    assert (isRotationArray(R))
+
+    sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
+
+    singular = sy < 1e-6
+
+    if not singular:
+        x = math.atan2(R[2, 1], R[2, 2])
+        y = math.atan2(-R[2, 0], sy)
+        z = math.atan2(R[1, 0], R[0, 0])
+    else:
+        x = math.atan2(-R[1, 2], R[1, 1])
+        y = math.atan2(-R[2, 0], sy)
+        z = 0
+
+    return np.array([x, y, z])
+
 
 class ComputerVisionThread(threading.Thread):
     def __init__(self,ctrl_message, state_message, message_lock, barrier):
@@ -158,7 +187,7 @@ class ComputerVisionThread(threading.Thread):
         sumTime = 0.0
         frameCount = 0
         logFile = open("cv_log.txt","w")
-        posx = posy = 0.0
+        firstPass = True
 
         self.b.wait() # barrier to wait for CF thread
         startTime = time.time()*1000
@@ -174,7 +203,7 @@ class ComputerVisionThread(threading.Thread):
             #-- Detect markers
             corners, ids, rejected = aruco.detectMarkers(image=gray, dictionary=aruco_dict, parameters=parameters, cameraMatrix=camera_matrix, distCoeff=camera_distortion)
             
-            if ids is not None:
+            if ids is not None and self.state.cv_mode == uglyConst.CTRL_NONE:
                 self.state.isMarkerDetected = True
 
                 #-- Draw the detected marker and put a reference frame over it
@@ -210,29 +239,34 @@ class ComputerVisionThread(threading.Thread):
                         aruco.drawAxis(frame, camera_matrix, camera_distortion, rvecs[i,0,:], tvecs[i,0,:], marker_size[id2follow]/2)
                     
                     #-- Obtain the rotation matrix tag->camera
-                    R_ct = np.matrix(cv2.Rodrigues(rvec)[0])
-                    R_tc = R_ct.T
+                    R_ct = np.array(cv2.Rodrigues(rvec)[0])
+                    R_tc = R_ct.transpose()
 
                     #-- Now get Position and attitude of the camera respect to the marker
+                    temp = np.array(tvec, ndmin=2).transpose()
                     if id2follow == 0:
-                        pos_camera = -R_tc*(np.matrix(tvec).T-T_slide)
+                        pos_camera = np.matmul(-R_tc,temp)-T_slide
                     else:
-                        pos_camera = -R_tc*(np.matrix(tvec).T)
+                        pos_camera = np.matmul(-R_tc,temp)
 
                     self.state.position = np.array(pos_camera)
                     
-
                     #-- Get the attitude of the camera respect to the frame
-                    roll_camera, pitch_camera, yaw_camera = rotationMatrixToEulerAngles(R_flipx*R_tc)
+                    roll_camera, pitch_camera, yaw_camera = rotationArrayToEulerAngles(np.matmul(R_flipx,R_tc)) #R_flipx*R_tc)
                     att_camera = [math.degrees(roll_camera), math.degrees(pitch_camera), math.degrees(yaw_camera)]
                     self.state.attitude = np.array(att_camera)
 
                     pos_flip = np.array([[-pos_camera.item(1)], [pos_camera.item(0)]])
-                    cmd_flip = np.array([[np.cos(yaw_camera), -np.sin(yaw_camera)], [np.sin(yaw_camera), np.cos(yaw_camera)]])
+                    cmd_flip = np.array([[np.cos(-yaw_camera), -np.sin(-yaw_camera)], [np.sin(-yaw_camera), np.cos(-yaw_camera)]])
                     pos_cmd = cmd_flip.dot(pos_flip)
 
-                    posx = posx*0.9 + pos_cmd[0]*0.1
-                    posy = posy*0.9 + pos_cmd[1]*0.1
+                    if firstPass:
+                        posx = pos_cmd[0]
+                        posy = pos_cmd[1]
+                        firstPass = False
+
+                    posx = posx*0.95 + pos_cmd[0]*0.05
+                    posy = posy*0.95 + pos_cmd[1]*0.05
 
                     self.lock.acquire()
                     self.ctrl.errorx = posx
@@ -243,7 +277,7 @@ class ComputerVisionThread(threading.Thread):
                     #self.state.pitch = math.degrees(pitch_camera)
                     self.lock.release()
                     currentTime = time.time()*1000-startTime
-                    logFile.write("%f,%f,%f,%f,%f,%f,%f,%d\n" % (currentTime,pos_cmd[0],pos_cmd[1],pos_camera[2],math.degrees(roll_camera),math.degrees(pitch_camera),math.degrees(yaw_camera), id2follow))
+                    logFile.write("%f,%f,%f,%f,%f,%f,%f,%d\n" % (currentTime,posx,posy,pos_camera[2],math.degrees(roll_camera),math.degrees(pitch_camera),math.degrees(yaw_camera), id2follow))
 
                     #-- Draw some information on frame
                     str_position = "Pos: x=%4.4f  y=%4.4f  z=%4.4f"%(pos_camera[0], pos_camera[1], pos_camera[2])
@@ -253,10 +287,44 @@ class ComputerVisionThread(threading.Thread):
                     
                     self.draw_HUD(frame, resolution, yaw_camera)
             
+            elif ids is not None and self.state.cv_mode == uglyConst.CTRL_PIX:
+                self.state.isMarkerDetected = True
+
+                #-- Draw the detected marker and put a reference frame over it
+                aruco.drawDetectedMarkers(frame, corners)
+                
+                #-- Calculate which marker has been seen most at late
+                if id2find[0] in ids:
+                    ids_seen[0] += 1
+                else: 
+                    ids_seen[0] = 0
+                
+                if id2find[1] in ids:
+                    ids_seen[1] += 2
+                else: 
+                    ids_seen[1] = 0
+                
+                id2follow = np.argmax(ids_seen) 
+                idx_r, idx_c = np.where(ids == id2find[id2follow])
+                
+                #-- Extract the id to follow 
+                corners = np.asarray(corners)
+                corners = corners[idx_r, :]
+                if len(corners) == 1:
+                    xsum = 0.0
+                    ysum = 0.0
+                    for i in range(4):
+                        xsum += corners[0][0][i][0]
+                        ysum += corners[0][0][i][1]
+                    xavg = xsum/4.0
+                    yavg = ysum/4.0
+                    self.ctrl.errorpixx = 320-xavg
+                    self.ctrl.errorpixy = 240-yavg
+            
             else:
-                self.lock.acquire()
+                #self.lock.acquire()
                 self.state.isMarkerDetected = False
-                self.lock.release()
+                #self.lock.release()
             
             #-- Calculate and draw FPS on frame
             t1 = time.time() # end time for fps calculation
@@ -320,6 +388,17 @@ class CrazyflieThread(threading.Thread):
         else:
             return True
 
+    def isClosePix(self):
+        x = self.ctrl.errorpixx
+        y = self.ctrl.errorpixy
+        if (np.sqrt(x*x+y*y) > 50):
+            return False
+        else:
+            return True
+
+    def limOutputVel(self, vx, vy, vz):
+        return min(vx, uglyConst.MAX_XVEL), min(vy, uglyConst.MAX_YVEL), min(vz, uglyConst.MAX_ZVEL)
+    
     #-- FSM state functions
     def stateInit(self):
         #--- Scan for cf
@@ -378,23 +457,57 @@ class CrazyflieThread(threading.Thread):
             return self.stateSeeking
 
     def stateNearing(self):
-        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, 0.0) #-self.ctrl.erroryaw*uglyConst.Kyaw)
+        """
+        S3 Nearing:
+        Control in pixel frame. Takes in error in pixels (note: camera coordinates), outputs velocity command in x,y,z. Z vel inversely proportional to radius.
+        """
         print("stateNearing")
+        x = self.ctrl.errorpixx
+        y = self.ctrl.errorpixy
+        cmdx = y*uglyConst.PIX_Kx
+        cmdy = x*uglyConst.PIX_Ky
+        r = np.sqrt(x*x+y*y)
+        if r > 0.0:
+            cmdz = (1/r)*uglyConst.PIX_Kz
+        else: 
+            cmdz = 1
+
+        cmdx, cmdy, cmdz = self.limOutputVel(cmdx, cmdy, cmdz)
+        
+        self.mc._set_vel_setpoint(cmdx, cmdy, -cmdz, 0.0)
         
         if not self.state.isMarkerDetected:
             return self.stateSeeking
-        elif self.isCloseCone():
-            return self.stateApproaching
+        elif self.isClosePix() and self.mc._thread.get_height() < uglyConst.POSE_HEIGHT:
+            self.state.cv_mode = uglyConst.CTRL_NONE
+            return self.stateApproachingXY
         else:
             time.sleep(0.05)
             return self.stateNearing
 
-    def stateApproaching(self):
+    def stateApproachingXY(self):
+        print("stateApproachingXY")
+        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
+        
+        if not self.isClosePix and self.mc._thread.get_height():
+            return self.stateNearing
+        if self.isCloseCone():
+            return self.stateApproachingXYZ
+        else:
+            time.sleep(0.01)
+            return self.stateApproachingXY
+
+    def stateApproachingXYZ(self):
+        """
+        S4 ApproachingXYZ:
+        Control in world frame. Takes in error in meters, outputs velocity command in x,y.
+        """
         print("stateApproaching")
         self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, -uglyConst.APPROACH_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
         
+
         if not self.isCloseCone:
-            return self.stateNearing
+            return self.stateApproachingXY
         elif self.mc._thread.get_height() < (uglyConst.DIST_IGE - uglyConst.DIST_IGE_HYST):
             if self.landingController == uglyConst.CTRL_NONE:
                 return self.stateLandning
@@ -449,14 +562,17 @@ class CrazyflieThread(threading.Thread):
 
     def exitLanding(self):
         print("exitLandning")
-        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx*2.0, self.ctrl.errory*uglyConst.Ky*2.0, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
+        errorz = 0.05-self.mc._thread.get_height()
+        cmdz = uglyConst.Kz*errorz
+        print(cmdz)
+        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx*2.0, self.ctrl.errory*uglyConst.Ky*2.0, cmdz, -self.ctrl.erroryaw*uglyConst.Kyaw)
         
         if self.isCloseXYP(uglyConst.LANDING_DIST):
             self.mc.stop()
             self.mc.land()
             return self.stateLanded
         else:
-            time.sleep(0.05)
+            time.sleep(0.01)
             return self.exitLanding
 
     def stateLanded(self):

@@ -23,18 +23,20 @@ class UglyLogger:
         self._scf = scf
         self.start_logging(self._scf)
         self._file = f
-        self._latestHeight = 0.0
-        self._heightRead = 0
-    
         self.start_logging(scf)
         
     def log_callback(self, timestamp, data, logconf):
+        x = data['stateEstimate.x']
+        y = data['stateEstimate.y']
+        z = data['stateEstimate.z']
         roll = data['stabilizer.roll']
         pitch = data['stabilizer.pitch']
         yaw = data['stabilizer.yaw']
+        #vx = data['posCtl.targetVX']
+        #vy = data['posCtl.targetVY']
+
         height = data['range.zrange'] # [mm]
-        self._latestHeight = height
-        self._file.write("%d,%0.4f,%0.4f,%0.4f,%0.4f,%0.4f\n" % (timestamp,roll,pitch,yaw,height,self._heightRead))
+        self._file.write("%d,%0.4f,%0.4f,%0.4f,%0.4f,%0.4f,%0.4f,%0.4f\n" % (timestamp,x,y,z,roll,pitch,yaw,height))
 
 
     # def logz_callback(self, timestamp, data, logconf):
@@ -52,11 +54,23 @@ class UglyLogger:
         #    file.write("timestamp,roll,pitch,yaw,height\n")
 
         log_conf = LogConfig(name='logdata', period_in_ms=10)
+        #-- States
+        log_conf.add_variable('stateEstimate.x','float')
+        log_conf.add_variable('stateEstimate.y','float')
+        log_conf.add_variable('stateEstimate.z','float')
         log_conf.add_variable('stabilizer.roll', 'float')
         log_conf.add_variable('stabilizer.pitch', 'float')
         log_conf.add_variable('stabilizer.yaw', 'float')
         log_conf.add_variable('range.zrange', 'uint16_t')
-    
+
+        #-- Battery voltage
+        #log_conf.add_variable('pm.vbat', 'float')
+
+        #-- Command 
+        #log_conf.add_variable('posCtl.targetVX','float')
+        #log_conf.add_variable('posCtl.targetVY','float')
+        #log_conf.add_variable('posCtl.targetVZ','float')
+
         #param_conf.add_variable('posCtl.VZp')
         #param_conf.add_variable('posCtl.VZi')
         #param_conf.add_variable('posCtl.VZd')
@@ -73,13 +87,6 @@ class UglyLogger:
         log_conf.start()
 
         #logz_conf.start()
-
-    def getHeight(self):
-        if self._heightRead == 0:
-            self._heightRead = 1
-        else:
-            self._heightRead = 0
-        return self._latestHeight/1000 # convert to m
 
 
 # if __name__ == '__main__':
