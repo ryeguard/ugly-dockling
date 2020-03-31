@@ -27,13 +27,14 @@ class controlMessage:
         self.errorz = 0.0
         self.errorpixx = 0.0
         self.errorpixy = 0.0
-        self.erroryaw = 0.0
+        self.erroryaw = 180.0
         self.cmd_zvel = 0.0
+        self.K = 0.0
 
 class stateMessage:
     def __init__(self):
         self.isMarkerDetected = False
-        self.cv_mode = uglyConst.CTRL_PIX
+        self.cv_mode = uglyConst.CVMODE_PIX
         self.position = np.array([0.0, 0.0, 0.0])
         self.attidtude = np.array([0.0, 0.0, 0.0])
         self.roll = 0.0
@@ -203,7 +204,7 @@ class ComputerVisionThread(threading.Thread):
             #-- Detect markers
             corners, ids, rejected = aruco.detectMarkers(image=gray, dictionary=aruco_dict, parameters=parameters, cameraMatrix=camera_matrix, distCoeff=camera_distortion)
             
-            if ids is not None and self.state.cv_mode == uglyConst.CTRL_NONE:
+            if ids is not None and self.state.cv_mode == uglyConst.CVMODE_POSE:
                 self.state.isMarkerDetected = True
 
                 #-- Draw the detected marker and put a reference frame over it
@@ -257,7 +258,7 @@ class ComputerVisionThread(threading.Thread):
                     self.state.attitude = np.array(att_camera)
 
                     pos_flip = np.array([[-pos_camera.item(1)], [pos_camera.item(0)]])
-                    cmd_flip = np.array([[np.cos(-yaw_camera), -np.sin(-yaw_camera)], [np.sin(-yaw_camera), np.cos(-yaw_camera)]])
+                    cmd_flip = np.array([[np.cos(yaw_camera), -np.sin(yaw_camera)], [np.sin(yaw_camera), np.cos(yaw_camera)]])
                     pos_cmd = cmd_flip.dot(pos_flip)
 
                     if firstPass:
@@ -265,6 +266,7 @@ class ComputerVisionThread(threading.Thread):
                         posy = pos_cmd[1]
                         firstPass = False
 
+                    #-- Filtering
                     posx = posx*0.95 + pos_cmd[0]*0.05
                     posy = posy*0.95 + pos_cmd[1]*0.05
 
@@ -287,7 +289,7 @@ class ComputerVisionThread(threading.Thread):
                     
                     self.draw_HUD(frame, resolution, yaw_camera)
             
-            elif ids is not None and self.state.cv_mode == uglyConst.CTRL_PIX:
+            elif ids is not None and self.state.cv_mode == uglyConst.CVMODE_PIX:
                 self.state.isMarkerDetected = True
 
                 #-- Draw the detected marker and put a reference frame over it
@@ -342,6 +344,12 @@ class ComputerVisionThread(threading.Thread):
 
             #-- User input
             key = cv2.waitKey(1) & 0xFF
+            if key == ord('w'):
+                self.ctrl.K += 0.05
+                print(self.ctrl.K)
+            if key == ord('s'):
+                self.ctrl.K -= 0.05
+                print(self.ctrl.K)
             if key == ord('q'):
                 #-- End thread
                 self.save_frame(frame, 'dist')
@@ -391,7 +399,7 @@ class CrazyflieThread(threading.Thread):
     def isClosePix(self):
         x = self.ctrl.errorpixx
         y = self.ctrl.errorpixy
-        if (np.sqrt(x*x+y*y) > 50):
+        if (np.sqrt(x*x+y*y) > 75):
             return False
         else:
             return True
@@ -475,11 +483,9 @@ class CrazyflieThread(threading.Thread):
         cmdx, cmdy, cmdz = self.limOutputVel(cmdx, cmdy, cmdz)
         
         self.mc._set_vel_setpoint(cmdx, cmdy, -cmdz, 0.0)
-        
-        if not self.state.isMarkerDetected:
-            return self.stateSeeking
-        elif self.isClosePix() and self.mc._thread.get_height() < uglyConst.POSE_HEIGHT:
-            self.state.cv_mode = uglyConst.CTRL_NONE
+
+        if self.isClosePix() and self.mc._thread.get_height() < uglyConst.NEARING2APPROACH_HEIGHT:
+            self.state.cv_mode = uglyConst.CVMODE_POSE
             return self.stateApproachingXY
         else:
             time.sleep(0.05)
@@ -487,14 +493,15 @@ class CrazyflieThread(threading.Thread):
 
     def stateApproachingXY(self):
         print("stateApproachingXY")
+        #self.mc._set_vel_setpoint(self.ctrl.errorx*(uglyConst.Kx+self.ctrl.K), self.ctrl.errory*(uglyConst.Ky+self.ctrl.K), 0.0, 30.0)
         self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
         
-        if not self.isClosePix and self.mc._thread.get_height():
+        if not self.isClosePix:
             return self.stateNearing
-        if self.isCloseCone():
+        if self.isCloseCone() and np.abs(self.ctrl.erroryaw) < uglyConst.FAR_ANGL:
             return self.stateApproachingXYZ
         else:
-            time.sleep(0.01)
+            time.sleep(0.05)
             return self.stateApproachingXY
 
     def stateApproachingXYZ(self):
@@ -502,33 +509,47 @@ class CrazyflieThread(threading.Thread):
         S4 ApproachingXYZ:
         Control in world frame. Takes in error in meters, outputs velocity command in x,y.
         """
-        print("stateApproaching")
-        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, -uglyConst.APPROACH_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
         
-
+        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, -uglyConst.APPROACH_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
+        print("stateApproachingXYZ")
+        
         if not self.isCloseCone:
             return self.stateApproachingXY
-        elif self.mc._thread.get_height() < (uglyConst.DIST_IGE - uglyConst.DIST_IGE_HYST):
+        elif self.mc._thread.get_height() < uglyConst.APPROACH2LANDING_HEIGHT:
             if self.landingController == uglyConst.CTRL_NONE:
-                return self.stateLandning
+                return self.stateLanding
+            elif self.landingController == uglyConst.LANDMODE_HOVER:
+                return self.stateHoverLand
             elif self.landingController == uglyConst.CTRL_POSD:
                 self.enterLandingIGE()
                 return self.stateLandingIGE
         else:
-            time.sleep(0.01)
-            return self.stateApproaching
-
-    def stateLandning(self):
-        print("stateLanding")
-        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx*2.0, self.ctrl.errory*uglyConst.Ky*2.0, -uglyConst.LANDING_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
-
-        if self.mc._thread.get_height() > (uglyConst.DIST_IGE + uglyConst.DIST_IGE_HYST):
-            return self.stateApproaching
-        elif self.mc._thread.get_height() < uglyConst.LANDING_HEIGHT:
-            return self.exitLanding()
-        else:
             time.sleep(0.05)
-            return self.stateLandning
+            return self.stateApproachingXYZ
+
+    def stateLanding(self):
+        print("stateLanding")
+        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, -uglyConst.LANDING_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
+
+        if self.mc._thread.get_height() > uglyConst.APPROACH2LANDING_HEIGHT:
+            return self.stateApproaching
+        elif self.mc._thread.get_height() < uglyConst.LANDING2LANDED_HEIGHT:
+            self.exitLanding()
+            return self.stateLanded
+        else:
+            time.sleep(0.01)
+            return self.stateLanding
+
+    def stateHoverLand(self):
+        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
+        print("stateHoverLand")
+
+        if self.isCloseXYP(uglyConst.LANDING_DIST):
+            self.exitLanding()
+            return self.stateLanded
+        else:
+            time.sleep(0.01)
+            return self.stateHoverLand
 
     def enterLandingIGE(self):
         print("enterLandingIGE")
@@ -561,20 +582,10 @@ class CrazyflieThread(threading.Thread):
             return self.stateLandingIGE
 
     def exitLanding(self):
+        self.mc.stop()
+        self.mc.land()
         print("exitLandning")
-        errorz = 0.05-self.mc._thread.get_height()
-        cmdz = uglyConst.Kz*errorz
-        print(cmdz)
-        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx*2.0, self.ctrl.errory*uglyConst.Ky*2.0, cmdz, -self.ctrl.erroryaw*uglyConst.Kyaw)
         
-        if self.isCloseXYP(uglyConst.LANDING_DIST):
-            self.mc.stop()
-            self.mc.land()
-            return self.stateLanded
-        else:
-            time.sleep(0.01)
-            return self.exitLanding
-
     def stateLanded(self):
         print("stateLanded")
         return None
