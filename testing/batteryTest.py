@@ -293,7 +293,7 @@ class CrazyflieThread(threading.Thread):
         self.scf = SyncCrazyflie(self.URI,cf=Crazyflie(rw_cache='./cache'))
         self.scf.open_link()
         self.mc = MotionCommander(self.scf)
-        self.file = open("bat_log_camon.txt","a")
+        self.file = open("bat_log_camoff7.txt","a")
 
         #-- Barrier to wait for CV thread
         self.b.wait()
