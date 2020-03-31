@@ -20,6 +20,7 @@ from ugly_syncLog import UglyLogger
 # Logging
 import datetime
 
+# Custom data structure (NOTE: currently possible to merge ctrl and state messages)
 class controlMessage:
     def __init__(self):
         self.errorx = 0.0
@@ -46,16 +47,19 @@ R_flipx[0,0] = 1.0
 R_flipx[1,1] =-1.0
 R_flipx[2,2] =-1.0
 
-#-- 90 deg rotation matrix around z axis
+#-- TODO: 90 deg rotation matrix around z axis
 R_flipz = np.zeros((3,3), dtype=np.float32)
-#
 
 #-- Translation relating large marker to small (8.935 cm in marker frame y direction)
 T_slide = np.zeros((3,1),dtype=np.float32)
 T_slide[1] = uglyConst.MARKER_OFFSET
 
-# Checks if a matrix is a valid rotation matrix.
 def isRotationMatrix(R):
+    """
+    Checks if matrix R is a valid rotation matrix. 
+    NOTE: Is replaced by isRotationArray b/c np.matrix is legacy code.
+    TODO: Remove when replaced by isRotationArray everywhere.
+    """
     Rt = np.transpose(R)
     shouldBeIdentity = np.dot(Rt, R)
     I = np.identity(3, dtype=R.dtype)
@@ -63,16 +67,23 @@ def isRotationMatrix(R):
     return n < 1e-6
 
 def isRotationArray(R):
+    """
+    Checks if matrix R is a valid rotation matrix.
+    TODO: Move into CV class.
+    """
     Rt = R.transpose()
     shouldBeIdentity = np.dot(Rt, R)
     I = np.identity(3)
     n = np.linalg.norm(I - shouldBeIdentity)
     return n < 1e-6
 
-# Calculates rotation matrix to euler angles
-# The result is the same as MATLAB except the order
-# of the euler angles ( x and z are swapped ).
 def rotationMatrixToEulerAngles(R):
+    """
+    Converts from rotation matrix R representation to Euler angle representation.
+    NOTE: Is replaced by rotationArrayToEulerAngles b/c np.matrix is legacy code.
+    TODO: Remove when replaced by rotationArrayToEulerAngles everywhere.
+    """
+
     assert (isRotationArray(np.array(R)))
 
     sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
@@ -91,6 +102,10 @@ def rotationMatrixToEulerAngles(R):
     return np.array([x, y, z])
 
 def rotationArrayToEulerAngles(R):
+    """
+    Converts from rotation matrix R representation to Euler angle representation.
+    TODO: Move into CV class.
+    """
     assert (isRotationArray(R))
 
     sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
@@ -108,10 +123,9 @@ def rotationArrayToEulerAngles(R):
 
     return np.array([x, y, z])
 
-
 class ComputerVisionThread(threading.Thread):
     def __init__(self,ctrl_message, state_message, message_lock, barrier):
-        """ constructor, setting initial variables """
+        
         super(ComputerVisionThread,self).__init__()
         self.ctrl = ctrl_message
         self.state = state_message
@@ -119,15 +133,19 @@ class ComputerVisionThread(threading.Thread):
         self.b = barrier
 
     def init_cv(self):
+        """Open camera capture. Returns cap and resolution."""
+
         cap = cv2.VideoCapture(uglyConst.CAM_NR)
         res = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         return cap, res
 
     def draw_str(self, dst, x, y, s):
+        """Draws a string s on frame dst at coorinates (x,y)."""
         cv2.putText(dst, s, (x+1, y+1), cv2.FONT_HERSHEY_PLAIN, 1.0, (0, 0, 0), thickness = 2, lineType=cv2.LINE_AA)
         cv2.putText(dst, s, (x, y), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), lineType = cv2.LINE_AA)
 
     def draw_HUD(self, frame, resolution, yaw_camera):
+        """Draws Heads Up Display on frame frame with resolution resolution."""
         midpointx = int(resolution[0]/2)
         midpointy = int(resolution[1]/2)
 
@@ -138,6 +156,7 @@ class ComputerVisionThread(threading.Thread):
         cv2.ellipse(frame, (midpointx,midpointy), (10,10), -90, 0, -math.degrees(yaw_camera), uglyConst.BLACK, thickness=3)
 
     def loadCameraParams(self, cam_name):
+        """Returns intrinsic parameters (camera matrix, camera distortions, calibration error) of camera cam_name."""
         if cam_name is 'runcam_nano3':
             camera_matrix = np.array([[269.11459175467655, 0.0, 318.8896785174727], [0.0, 262.62554966204, 248.54894259248005], [0.0, 0.0, 1.0]])
             camera_dist = np.array([[-0.1913802179616581, 0.04076781232772304, -0.0014647104190866982, 0.00047321030718756505, -0.0043907605166862065]])
@@ -159,11 +178,13 @@ class ComputerVisionThread(threading.Thread):
         return camera_matrix, camera_dist, calibration_error
 
     def save_frame(self, frame, name):
+        """Saves a frame with name and date/time stamp."""
         now = datetime.datetime.now()
         date = now.strftime("%Y-%m-%d_%H%M")
         cv2.imwrite('figures/endFrame_'+name+'_'+date+'.jpg',frame)
 
     def undist_frame(self, frame, camera_matrix, camera_dist, resolution):
+        """Undistorts frame using camera matrix and distortions. Returns True if successful, False if not."""
         new_camera_matrix, valid_pix_roi = cv2.getOptimalNewCameraMatrix(camera_matrix, camera_dist, (int(resolution[0]), int(resolution[1])), 0)
         mapx, mapy = cv2.initUndistortRectifyMap(camera_matrix, camera_dist, None, new_camera_matrix, (int(resolution[0]), int(resolution[1])), 5)
         if mapx is not None and mapy is not None:
@@ -173,24 +194,33 @@ class ComputerVisionThread(threading.Thread):
             return False, frame
 
     def run(self):
+        """Main loop. State machine."""
+
+        #-- Define AruCo
         aruco_dict  = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
         parameters  = aruco.DetectorParameters_create()
         parameters.errorCorrectionRate = 1
+
+        #-- Define font
         font = cv2.FONT_HERSHEY_PLAIN
+
+        #-- Import marker data from constants
         id2find = [uglyConst.MARKERID_BIG, uglyConst.MARKERID_SMALL] 
         marker_size  = [uglyConst.MARKERSIZE_BIG, uglyConst.MARKERSIZE_SMALL]
 
         camera_matrix, camera_distortion, _ = self.loadCameraParams('runcam_nano3')
-        
         cap, resolution = self.init_cv()
+        
+        #-- Init variable
         ids_seen = [0, 0]
         id2follow = 0
         sumTime = 0.0
         frameCount = 0
-        logFile = open("cv_log.txt","w")
         firstPass = True
 
-        self.b.wait() # barrier to wait for CF thread
+        logFile = open("cv_log.txt","w") # open log file
+    
+        self.b.wait() # barrier to wait for CF thread, sync
         startTime = time.time()*1000
         
         while True:
@@ -204,7 +234,9 @@ class ComputerVisionThread(threading.Thread):
             #-- Detect markers
             corners, ids, rejected = aruco.detectMarkers(image=gray, dictionary=aruco_dict, parameters=parameters, cameraMatrix=camera_matrix, distCoeff=camera_distortion)
             
-            if ids is not None and self.state.cv_mode == uglyConst.CVMODE_POSE:
+            #-- State: Pose estimation
+            if ids is not None and self.state.cv_mode == uglyConst.CVMODE_POSE: 
+
                 self.state.isMarkerDetected = True
 
                 #-- Draw the detected marker and put a reference frame over it
@@ -217,7 +249,7 @@ class ComputerVisionThread(threading.Thread):
                     ids_seen[0] = 0
                 
                 if id2find[1] in ids:
-                    ids_seen[1] += 2
+                    ids_seen[1] += 2 # +2 to choose smaller tag 
                 else: 
                     ids_seen[1] = 0
                 
@@ -228,7 +260,7 @@ class ComputerVisionThread(threading.Thread):
                 corners = np.asarray(corners)
                 corners = corners[idx_r, :]
                
-                #-- Estimate poses of detected markers
+                #-- Estimate pose of extracted marker
                 rvecs, tvecs, _ = aruco.estimatePoseSingleMarkers(corners, marker_size[id2follow], camera_matrix, camera_distortion)
                 
                 if rvecs is not None:
@@ -289,6 +321,7 @@ class ComputerVisionThread(threading.Thread):
                     
                     self.draw_HUD(frame, resolution, yaw_camera)
             
+            #-- State: Pixel frame control (corresponds to stateNearing in CF thread)
             elif ids is not None and self.state.cv_mode == uglyConst.CVMODE_PIX:
                 self.state.isMarkerDetected = True
 
@@ -323,6 +356,7 @@ class ComputerVisionThread(threading.Thread):
                     self.ctrl.errorpixx = 320-xavg
                     self.ctrl.errorpixy = 240-yavg
             
+            #-- State: No detected marker
             else:
                 #self.lock.acquire()
                 self.state.isMarkerDetected = False
@@ -372,7 +406,7 @@ class CrazyflieThread(threading.Thread):
         self.scf = None
         self.runSM = True
         self.cmd_height_old = uglyConst.TAKEOFF_HEIGHT
-        self.landingController = uglyConst.CTRL_NONE # see uglyConst for controller choice
+        self.landingController = uglyConst.LANDMODE_NONE # see uglyConst for controller choice
         self.b = barrier
 
     def raise_exception(self):
@@ -380,6 +414,7 @@ class CrazyflieThread(threading.Thread):
 
     #-- FSM condition funcitons
     def isCloseXYP(self, r):
+        """Determines if drone is within radius r and aligned."""
         x = self.ctrl.errorx
         y = self.ctrl.errory
         if (np.sqrt(x*x+y*y) > r) or (np.abs(self.ctrl.erroryaw) > uglyConst.FAR_ANGL):
@@ -388,6 +423,7 @@ class CrazyflieThread(threading.Thread):
             return True
 
     def isCloseCone(self):
+        """Determines if drone within an inverted cone (defined in constants)."""
         x = self.ctrl.errorx
         y = self.ctrl.errory
         r = (self.mc._thread.get_height()-uglyConst.DIST_IGE)*uglyConst.FAR_CONE
@@ -397,18 +433,21 @@ class CrazyflieThread(threading.Thread):
             return True
 
     def isClosePix(self):
+        """Determines if drone is within radius (in pixels, defined in constants)."""
         x = self.ctrl.errorpixx
         y = self.ctrl.errorpixy
-        if (np.sqrt(x*x+y*y) > 75):
+        if (np.sqrt(x*x+y*y) > uglyConst.CLOSE_PIX):
             return False
         else:
             return True
 
     def limOutputVel(self, vx, vy, vz):
+        """Limits output of velocity controller."""
         return min(vx, uglyConst.MAX_XVEL), min(vy, uglyConst.MAX_YVEL), min(vz, uglyConst.MAX_ZVEL)
     
     #-- FSM state functions
     def stateInit(self):
+        """Initialize CF (scan, open link) and logging framework"""
         #--- Scan for cf
         cflib.crtp.init_drivers(enable_debug_driver=False)
         print('Scanning interfaces for Crazyflies...')
@@ -442,10 +481,12 @@ class CrazyflieThread(threading.Thread):
         return self.stateTakingOff
 
     def enterTakingOff(self):
+        """Entry to state: Take off"""
         print("enterTakingOff")
         self.mc.take_off(uglyConst.TAKEOFF_HEIGHT,uglyConst.TAKEOFF_ZVEL)
 
     def stateTakingOff(self):
+        """State: Taking off"""
         print("stateTakingOff")
         
         if  self.mc._thread.get_height() >= uglyConst.TAKEOFF_HEIGHT:
@@ -455,8 +496,9 @@ class CrazyflieThread(threading.Thread):
             return self.stateTakingOff
 
     def stateSeeking(self):
-        print("stateSeeking")
+        """State: Seeking. Slowly ascend until marker is detected. TODO: Implement some kind of search algorithm (circle outward?)"""
         self.mc._set_vel_setpoint(0.0, 0.0, 0.01, 0.0)
+        print("stateSeeking")
         
         if self.state.isMarkerDetected:
             return self.stateNearing
@@ -466,10 +508,9 @@ class CrazyflieThread(threading.Thread):
 
     def stateNearing(self):
         """
-        S3 Nearing:
+        State: Nearing 
         Control in pixel frame. Takes in error in pixels (note: camera coordinates), outputs velocity command in x,y,z. Z vel inversely proportional to radius.
         """
-        print("stateNearing")
         x = self.ctrl.errorpixx
         y = self.ctrl.errorpixy
         cmdx = y*uglyConst.PIX_Kx
@@ -483,6 +524,7 @@ class CrazyflieThread(threading.Thread):
         cmdx, cmdy, cmdz = self.limOutputVel(cmdx, cmdy, cmdz)
         
         self.mc._set_vel_setpoint(cmdx, cmdy, -cmdz, 0.0)
+        print("stateNearing")
 
         if self.isClosePix() and self.mc._thread.get_height() < uglyConst.NEARING2APPROACH_HEIGHT:
             self.state.cv_mode = uglyConst.CVMODE_POSE
@@ -492,10 +534,13 @@ class CrazyflieThread(threading.Thread):
             return self.stateNearing
 
     def stateApproachingXY(self):
-        print("stateApproachingXY")
+        """
+        State: Approaching (XY plane)
+        Control in the horizontal XY plane and yaw angle.
+        """
         #self.mc._set_vel_setpoint(self.ctrl.errorx*(uglyConst.Kx+self.ctrl.K), self.ctrl.errory*(uglyConst.Ky+self.ctrl.K), 0.0, 30.0)
         self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
-        
+        print("stateApproachingXY")
         if not self.isClosePix:
             return self.stateNearing
         if self.isCloseCone() and np.abs(self.ctrl.erroryaw) < uglyConst.FAR_ANGL:
@@ -506,8 +551,8 @@ class CrazyflieThread(threading.Thread):
 
     def stateApproachingXYZ(self):
         """
-        S4 ApproachingXYZ:
-        Control in world frame. Takes in error in meters, outputs velocity command in x,y.
+        State: Approaching
+        Control in world frame. Takes in error in meters, outputs velocity command in x,y. Constant vel cmd in z.
         """
         
         self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, -uglyConst.APPROACH_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
@@ -516,8 +561,8 @@ class CrazyflieThread(threading.Thread):
         if not self.isCloseCone:
             return self.stateApproachingXY
         elif self.mc._thread.get_height() < uglyConst.APPROACH2LANDING_HEIGHT:
-            if self.landingController == uglyConst.CTRL_NONE:
-                return self.stateLanding
+            if self.landingController == uglyConst.LANDMODE_NONE: 
+                return self.stateLanding 
             elif self.landingController == uglyConst.LANDMODE_HOVER:
                 return self.stateHoverLand
             elif self.landingController == uglyConst.CTRL_POSD:
@@ -528,8 +573,13 @@ class CrazyflieThread(threading.Thread):
             return self.stateApproachingXYZ
 
     def stateLanding(self):
-        print("stateLanding")
+        """
+        State: Landing
+        Procedure: Descend to a set height, then stop and land.
+        """
         self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, -uglyConst.LANDING_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
+
+        print("stateLanding")
 
         if self.mc._thread.get_height() > uglyConst.APPROACH2LANDING_HEIGHT:
             return self.stateApproaching
@@ -541,6 +591,10 @@ class CrazyflieThread(threading.Thread):
             return self.stateLanding
 
     def stateHoverLand(self):
+        """
+        State: HoverLanding
+        Procedure: Stop at certain height, adjust in XY plane until exactly over tag, then land.
+        """
         self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
         print("stateHoverLand")
 
@@ -582,27 +636,38 @@ class CrazyflieThread(threading.Thread):
             return self.stateLandingIGE
 
     def exitLanding(self):
+        """
+        Exit from state: Landing
+        Stop movement (vel cmds=0), then descend.
+        """
         self.mc.stop()
         self.mc.land()
         print("exitLandning")
         
     def stateLanded(self):
+        """
+        State: Landed
+        Dummy state.
+        """
         print("stateLanded")
         return None
 
     def run(self):
+        """Main loop, state machine"""
         try: 
             state = self.stateInit    # initial state
             while state and self.runSM: 
                 state = state()
 
         finally:
+            #-- Clean up 
             print('Stopping cf_thread')
             if self.cf is not None:
-                if self.mc._is_flying:
+                if self.mc._is_flying: # if cf has not landed, do so
                     self.mc.stop()
                     print('Finally landing')
                     self.mc.land()
+                #-- Close link and logging
                 self.scf.close_link()
                 self.file.close()
                   

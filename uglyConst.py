@@ -38,13 +38,15 @@ LANDING_HEIGHT = 0.1
 LANDING_ZVEL = 0.025
 LANDING_DIST = 0.005
 
+CLOSE_PIX = 75
+
 DIST_IGE = 0.15
 DIST_IGE_HYST = 0.05
 R_CYLINDER = 0.05
 R_CYLINDER_HYST = 0.04     
 
 #-- Control parameters
-CTRL_NONE = 0           # no landing control, just vertical velocity=LANDING_ZVEL
+LANDMODE_NONE = 0           # no landing control, just vertical velocity=LANDING_ZVEL
 CTRL_POSD = 1
 LANDMODE_HOVER = 2
 
