@@ -12,9 +12,9 @@ from cflib.positioning.motion_commander import MotionCommander
 
 # Only output errors from the logging framework
 logging.basicConfig(level=logging.ERROR)
-open("ugly_log.txt","w")
-open("ugly_logz.txt","w")
 
+# On import, open in write mode to reset file
+open("ugly_log.txt","w")
 
 class UglyLogger:
 

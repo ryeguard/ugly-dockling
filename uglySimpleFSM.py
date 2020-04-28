@@ -169,6 +169,10 @@ class ComputerVisionThread(threading.Thread):
             camera_matrix = np.array([[1000.0, 0.0, 655], [0.0, 1000.0, 380], [0.0, 0.0, 1.0]])
             camera_dist = np.array([[-0.2, -1.3, -.0042, -.0025, 2.3]])
             calibration_error = 100
+        elif cam_name is 'runcam_nano3_matlab':
+            camera_matrix = np.array([[272.4886845332201, 0.0, 320.4644480817673], [0.0, 267.8810513665159, 247.7275639090179], [0.0, 0.0, 1.0]])
+            camera_dist = np.array([[-0.196829273044116, 0.041379816915944, -0.004194588440859, 0.0, 0.0]])
+            calibration_error = 0.1606
         else:
             print('Camera not found. Returning shit values.')
             camera_matrix = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
@@ -249,7 +253,7 @@ class ComputerVisionThread(threading.Thread):
                     ids_seen[0] = 0
                 
                 if id2find[1] in ids:
-                    ids_seen[1] += 2 # +2 to choose smaller tag 
+                    ids_seen[1] += 3 # +2 to choose smaller tag 
                 else: 
                     ids_seen[1] = 0
                 
@@ -408,6 +412,7 @@ class CrazyflieThread(threading.Thread):
         self.cmd_height_old = uglyConst.TAKEOFF_HEIGHT
         self.landingController = uglyConst.LANDMODE_NONE # see uglyConst for controller choice
         self.b = barrier
+        self.descCounter = 0
 
     def raise_exception(self):
         self.runSM = False
@@ -577,15 +582,16 @@ class CrazyflieThread(threading.Thread):
         State: Landing
         Procedure: Descend to a set height, then stop and land.
         """
-        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, -uglyConst.LANDING_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
+        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx*2.0, self.ctrl.errory*uglyConst.Ky*2.0, -uglyConst.LANDING_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
 
         print("stateLanding")
 
         if self.mc._thread.get_height() > uglyConst.APPROACH2LANDING_HEIGHT:
             return self.stateApproaching
         elif self.mc._thread.get_height() < uglyConst.LANDING2LANDED_HEIGHT:
-            self.exitLanding()
-            return self.stateLanded
+            #self.exitLanding()
+            #return self.stateLanded
+            return self.stateControlDescend
         else:
             time.sleep(0.01)
             return self.stateLanding
@@ -635,12 +641,23 @@ class CrazyflieThread(threading.Thread):
             time.sleep(0.05)
             return self.stateLandingIGE
 
+    def stateControlDescend(self):
+        """"""
+        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx*4.0, self.ctrl.errory*uglyConst.Ky*4.0, -uglyConst.MAX_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw*2.0)
+        self.descCounter += 1  
+        print("stateControlDescend")
+        if self.descCounter > 10:
+            self.mc.land()
+            return self.stateLanded  
+        else:   
+            time.sleep(0.01)
+            return self.stateControlDescend
+
     def exitLanding(self):
         """
         Exit from state: Landing
         Stop movement (vel cmds=0), then descend.
         """
-        self.mc.stop()
         self.mc.land()
         print("exitLandning")
         
@@ -656,7 +673,9 @@ class CrazyflieThread(threading.Thread):
         """Main loop, state machine"""
         try: 
             state = self.stateInit    # initial state
-            while state and self.runSM: 
+            self.stateNum = uglyConst.S0_INIT
+            while state and self.runSM:
+
                 state = state()
 
         finally:
