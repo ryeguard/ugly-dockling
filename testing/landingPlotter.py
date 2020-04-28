@@ -11,7 +11,7 @@ runid,time,x,y,yaw,markerDetect,mx,my,myaw = np.loadtxt(fileName, delimiter=',',
 
 # Variables 
 numRuns = len(runid)
-ampFactor = 5.0
+ampFactor = 2.0
 
 #Fusion
 x_fus = np.zeros(numRuns,dtype=np.float64)
@@ -48,11 +48,13 @@ print('Percent detect: '+str(np.sum(markerDetect)/numRuns))
 
 # Define figure
 rows, cols = 1, 1
-fig, axs = plt.subplots(rows, cols, sharex=True)
+fig, axs = plt.subplots(rows, cols, sharex=True, figsize=(7,7), dpi=80)
 xlim, ylim = 50, 50
 plt.xlim(-xlim, xlim)
 plt.ylim(-ylim, ylim)
-axs.axis('square')
+plt.xticks(np.arange(-xlim+10, xlim, 10)) 
+plt.yticks(np.arange(-ylim+10, ylim, 10)) 
+axs.set_title('Landing accuracy')
 plt.xlabel('x [mm]')
 plt.ylabel('y [mm]')
 
@@ -64,10 +66,12 @@ black = '#000000'
 s = 50 # size
 
 # Draw circles
+c = matplotlib.patches.Circle((0,0), radius = 0.1, ec=black, fill=False, lw=1)
+axs.add_patch(c)
 for i in range(1,5):
     label = "r="+str(i*10)
     plt.text(i*10+1,0,label,fontsize=8)
-    c = matplotlib.patches.Circle((0,0), radius = i*10, ec=black, fill=False, lw=0.5)
+    c = matplotlib.patches.Circle((0,0), radius = i*10, ec=black, fill=False, lw=.5)
     axs.add_patch(c)
 
 # Plot landing pose
@@ -77,5 +81,8 @@ for i in range(numRuns):
     else:
         axs.scatter(x_fus[i],y_fus[i], s=s, marker="o", fc='none', edgecolors=black)
     axs.scatter(x_fus[i],y_fus[i], c=black, s=s*2, marker=(2,2,yaw_fus[i]*ampFactor))
+
+
+#axs.legend()
 
 plt.show()
