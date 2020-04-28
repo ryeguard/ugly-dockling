@@ -33,7 +33,7 @@ class controlMessage:
 class stateMessage:
     def __init__(self):
         self.isMarkerDetected = False
-        self.cv_mode = uglyConst.CTRL_PIX
+        self.cv_mode = uglyConst.CVMODE_PIX
         self.position = np.array([0.0, 0.0, 0.0])
         self.attidtude = np.array([0.0, 0.0, 0.0])
         self.roll = 0.0
@@ -233,7 +233,7 @@ class CrazyflieThread(threading.Thread):
         self.scf = None
         self.runSM = True
         self.cmd_height_old = uglyConst.TAKEOFF_HEIGHT
-        self.landingController = uglyConst.CTRL_NONE # see uglyConst for controller choice
+        self.landingController = uglyConst.LANDMODE_NONE # see uglyConst for controller choice
         self.b = barrier
 
     def raise_exception(self):
