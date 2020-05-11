@@ -31,12 +31,12 @@ class UglyLogger:
         y = data['stateEstimate.y']
         z = data['stateEstimate.z']
         yaw = data['stabilizer.yaw']
-        vx = 0 #data['ctrltarget.vx']
-        vy = 0 #data['ctrltarget.vy']
-        vz = 0 #data['ctrltarget.vz']
+        vx = data['stateEstimate.vx']
+        vy = data['stateEstimate.vy']
+        vyaw  = data['stateEstimateZ.rateYaw']
         #print("log callback")
 
-        self._file.write("%d,%0.4f,%0.4f,%0.4f,%0.4f,%0.4f,%0.4f,%0.4f\n" % (timestamp,x,y,z,yaw,vx,vy,vz))
+        self._file.write("%d,%0.4f,%0.4f,%0.4f,%0.4f,%0.4f,%0.4f,%d\n" % (timestamp,x,y,z,yaw,vx,vy,vyaw))
 
     def start_logging(self,scf):
         log_conf = LogConfig(name='logdata', period_in_ms=10)
@@ -47,7 +47,11 @@ class UglyLogger:
         #log_conf.add_variable('stabilizer.roll', 'float')
         #log_conf.add_variable('stabilizer.pitch', 'float')
         log_conf.add_variable('stabilizer.yaw', 'float')
-        
+
+        log_conf.add_variable('stateEstimate.vx','float')
+        log_conf.add_variable('stateEstimate.vy','float')
+        log_conf.add_variable('stateEstimateZ.rateYaw','int16_t')
+
         #log_conf.add_variable('range.zrange', 'uint16_t')
 
         #-- Battery voltage

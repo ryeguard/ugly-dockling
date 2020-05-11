@@ -36,6 +36,7 @@ class stateMessage:
     def __init__(self):
         self.isMarkerDetected = False
         self.cv_mode = uglyConst.CVMODE_POSE
+        self.hasStepped = False
         self.position = np.array([0.0, 0.0, 0.0])
         self.attidtude = np.array([0.0, 0.0, 0.0])
         self.roll = 0.0
@@ -165,6 +166,10 @@ class ComputerVisionThread(threading.Thread):
             camera_matrix = np.array([[333.1833852111547, 0.0, 327.7723204462851], [0.0, 337.3376244908818, 229.96013817983925], [0.0, 0.0, 1.0]])
             camera_dist = np.array([[-0.37915663345130246, 0.18478180306843126, -0.00021990379249122642, -0.0014864903771132248, -0.05061040147030076]])
             calibration_error = 0.5077483684005625
+        elif cam_name is 'runcam_nano3_matlab':
+            camera_matrix = np.array([[272.4886845332201, 0.0, 320.4644480817673], [0.0, 267.8810513665159, 247.7275639090179], [0.0, 0.0, 1.0]])
+            camera_dist = np.array([[-0.196829273044116, 0.041379816915944, -0.004194588440859, 0.0, 0.0]])
+            calibration_error = 0.1606
         elif cam_name is 'webcam':
             camera_matrix = np.array([[1000.0, 0.0, 655], [0.0, 1000.0, 380], [0.0, 0.0, 1.0]])
             camera_dist = np.array([[-0.2, -1.3, -.0042, -.0025, 2.3]])
@@ -208,7 +213,7 @@ class ComputerVisionThread(threading.Thread):
         id2find = [uglyConst.MARKERID_BIG, uglyConst.MARKERID_SMALL] 
         marker_size  = [uglyConst.MARKERSIZE_BIG, uglyConst.MARKERSIZE_SMALL]
 
-        camera_matrix, camera_distortion, _ = self.loadCameraParams('runcam_nano3')
+        camera_matrix, camera_distortion, _ = self.loadCameraParams('runcam_nano3_matlab')
         cap, resolution = self.init_cv()
         
         #-- Init variable
@@ -222,6 +227,7 @@ class ComputerVisionThread(threading.Thread):
     
         self.b.wait() # barrier to wait for CF thread, sync
         startTime = time.time()*1000
+        switchTime = 0
         
         while True:
             t0 = time.time() # start time for fps calculation
@@ -249,7 +255,7 @@ class ComputerVisionThread(threading.Thread):
                     ids_seen[0] = 0
                 
                 if id2find[1] in ids:
-                    ids_seen[1] += 3 # +2 to choose smaller tag 
+                    ids_seen[1] += 1 # +2 to choose smaller tag 
                 else: 
                     ids_seen[1] = 0
                 
@@ -278,7 +284,7 @@ class ComputerVisionThread(threading.Thread):
                     #-- Now get Position and attitude of the camera respect to the marker
                     temp = np.array(tvec, ndmin=2).transpose()
                     if id2follow == 0:
-                        pos_camera = np.matmul(-R_tc,temp)-T_slide
+                        pos_camera = np.matmul(-R_tc,temp)#-T_slide
                     else:
                         pos_camera = np.matmul(-R_tc,temp)
 
@@ -311,7 +317,9 @@ class ComputerVisionThread(threading.Thread):
                     #self.state.pitch = math.degrees(pitch_camera)
                     self.lock.release()
                     currentTime = time.time()*1000-startTime
-                    logFile.write("%f,%f,%f,%f,%f,%f,%f,%d\n" % (currentTime,posx,posy,pos_camera[2],math.degrees(roll_camera),math.degrees(pitch_camera),math.degrees(yaw_camera), id2follow))
+                    if self.state.hasStepped == True:
+                        switchTime = 1
+                    logFile.write("%f,%f,%f,%f,%f,%f,%f,%d,%d\n" % (currentTime,posx,posy,pos_camera[2],math.degrees(roll_camera),math.degrees(pitch_camera),math.degrees(yaw_camera), id2follow, switchTime))
 
                     #-- Draw some information on frame
                     str_position = "Pos: x=%4.4f  y=%4.4f  z=%4.4f"%(pos_camera[0], pos_camera[1], pos_camera[2])
@@ -335,7 +343,7 @@ class ComputerVisionThread(threading.Thread):
                     ids_seen[0] = 0
                 
                 if id2find[1] in ids:
-                    ids_seen[1] += 2
+                    ids_seen[1] += 1
                 else: 
                     ids_seen[1] = 0
                 
@@ -499,7 +507,7 @@ class CrazyflieThread(threading.Thread):
 
     def stateSeeking(self):
         """State: Seeking. Slowly ascend until marker is detected. TODO: Implement some kind of search algorithm (circle outward?)"""
-        self.mc._set_vel_setpoint(0.0, 0.0, 0.01, 0.0)
+        self.mc._set_vel_setpoint(0.0, 0.0, 0.0, 0.0)
         print("stateSeeking")
         
         if self.state.isMarkerDetected:
@@ -508,28 +516,17 @@ class CrazyflieThread(threading.Thread):
             time.sleep(0.05)
             return self.stateSeeking
 
-    def stateStepXStart(self):
-        error = self.ctrl.errorx-1.0
-        self.mc._set_vel_setpoint(error*uglyConst.Kx, 0.0, 0.0, 0.0)
-        print(error)
-
-        if np.abs(error)<0.001:
-            return self.stateStepX
-        else:
-            time.sleep(0.01)
-            return self.stateStepXStart
-
     def stateStepXYStart(self):
         errorx = self.ctrl.errorx-0.707106/2
         errory = self.ctrl.errory-0.707106/2
         self.mc._set_vel_setpoint(errorx*uglyConst.Kx, errory*uglyConst.Ky, 0.0, 0.0)
-        print(errorx, errory)
+        print("stateStepXYStart")
 
         if np.abs(errorx)<0.01 and np.abs(errory)<0.01:
             self.descCounter += 1
-            if self.descCounter > 10:
-                print(self.descCounter)
-                self.startTime = time.time() # milliseconds
+            if self.descCounter > 100:
+                self.startTime = time.time() # seconds
+                self.state.hasStepped = True
                 return self.stateStepXY
             else: 
                 time.sleep(0.01)
@@ -538,34 +535,49 @@ class CrazyflieThread(threading.Thread):
             time.sleep(0.01)
             return self.stateStepXYStart
 
-    def stateStepX(self):
-
-        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, 0.0, 0.0, 0.0)
-        duration = time.time() - self.startTime
-        print(duration)
-
-        if duration > 5.0:
-            self.mc.land()
-            print("LANDING")
-            return stateLanded
-        else:
-            time.sleep(0.01)
-            return self.stateStepX
-
     def stateStepXY(self):
         self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, 0.0)
-        
 
         duration = time.time() - self.startTime
-        print(duration)
-        if duration > 5.0:
+        if duration > 8.0:
             self.mc.land()
             print("LANDING")
-            return state.landed
+            return self.stateLanded
         else:
             time.sleep(0.01)
             return self.stateStepXY
 
+    def stateStepYawStart(self):
+        erroryaw = self.ctrl.erroryaw+135
+        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, -erroryaw*uglyConst.Kyaw)
+        print("stateStepYawStart")
+
+        if np.abs(erroryaw)<1.0:
+            self.descCounter += 1
+            if self.descCounter > 100:
+                self.startTime = time.time() # seconds
+                self.state.hasStepped = True
+                return self.stateStepYaw
+            else: 
+                time.sleep(0.01)
+                return self.stateStepYawStart
+        else:
+            time.sleep(0.01)
+            return self.stateStepYawStart
+
+    def stateStepYaw(self):
+        self.mc._set_vel_setpoint(0.0, 0.0, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
+        print("stateStepYaw")
+
+        duration = time.time() - self.startTime
+        if duration > 8.0:
+            self.mc.land()
+            print("LANDING")
+            return self.stateLanded
+        else:
+            time.sleep(0.01)
+            return self.stateStepYaw
+        
     def stateNearing(self):
         """
         State: Nearing 
