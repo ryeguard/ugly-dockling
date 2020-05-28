@@ -3,12 +3,12 @@
 # All distances/velocities are in meters/meters per second.
 
 #-- OpenCV settings
-CAM_NR = 2
-MARKER_OFFSET = 0.08935
+CAM_NR = 0
+MARKER_OFFSET = -0.1     # paper: 0.08935 base station: -0.1032
 MARKERSIZE_SMALL = 0.0215
 MARKERSIZE_BIG = 0.112
-MARKERID_BIG = 10 #0
-MARKERID_SMALL = 17 #1
+MARKERID_BIG = 0            # v1: 0, v2: 10, 
+MARKERID_SMALL = 1          # v1: 1, v2: 17,
 
 CVMODE_POSE = 0
 CVMODE_PIX = 1
@@ -21,7 +21,7 @@ BLACK = (0,0,0)
 WHITE = (255,255,255)
 
 #-- State machine
-TAKEOFF_HEIGHT = 1.2
+TAKEOFF_HEIGHT = 0.9
 TAKEOFF_ZVEL = 0.8 
 APPROACH_ZVEL = 0.1
 FAR_DIST = 0.025

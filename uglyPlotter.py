@@ -61,8 +61,6 @@ axs[2][1].plot(time_cf, yaw, 'tab:red')
 axs[3][1].set_title('id2follow')
 axs[3][1].plot(time_cv, id2follow, 'tab:blue')
 
-
-
 #-- Third column [:][2]
 # axs[0][2].set_title('u_x')
 # axs[0][2].plot(time_cf, vx, 'tab:blue')
