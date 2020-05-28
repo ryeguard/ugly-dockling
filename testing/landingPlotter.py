@@ -4,9 +4,10 @@ import matplotlib.cm as cm
 import datetime
 import shutil
 import numpy as np
+from scipy.ndimage.interpolation import rotate
 
 # Import data
-fileName = 'land_log.txt'   #id,time,x,y,yaw,markerDetect,mx,my,myaw
+fileName = 'landingLog.txt'   #id,time,x,y,yaw,markerDetect,mx,my,myaw
 runid,time,x,y,yaw,markerDetect,mx,my,myaw = np.loadtxt(fileName, delimiter=',', unpack=True)
 
 # Variables 
@@ -34,17 +35,17 @@ yaw_sum = np.sum(yaw_abs)
 yaw_avg = np.average(yaw_abs)
 yaw_std = np.std(yaw_abs)
 
-print('Avg yaw: '+str(np.average(yaw_fus)))
-print('Std yaw: '+str(yaw_std))
+#print('Avg yaw: '+str(np.average(yaw_fus)))
+#print('Std yaw: '+str(yaw_std))
 
 r = [(np.hypot(x_fus[i],y_fus[i])) for i in range(0,numRuns)]
 r_avg = np.average(r)
 r_std = np.std(r)
 
-print('Avg radius: '+str(r_avg))
-print('Std radius: '+str(r_std))
+#print('Avg radius: '+str(r_avg))
+#print('Std radius: '+str(r_std))
 
-print('Percent detect: '+str(np.sum(markerDetect)/numRuns))
+#print('Percent detect: '+str(np.sum(markerDetect)/numRuns))
 
 # Define figure
 rows, cols = 1, 1
@@ -54,7 +55,7 @@ plt.xlim(-xlim, xlim)
 plt.ylim(-ylim, ylim)
 plt.xticks(np.arange(-xlim+10, xlim, 10)) 
 plt.yticks(np.arange(-ylim+10, ylim, 10)) 
-axs.set_title('Landing accuracy')
+#axs.set_title('Landing accuracy')
 plt.xlabel('x [mm]')
 plt.ylabel('y [mm]')
 
@@ -85,4 +86,23 @@ for i in range(numRuns):
 
 #axs.legend()
 
-plt.show()
+#plt.show()
+
+# Calculate drone displacement
+dr = np.zeros((numRuns,1))
+
+OA = np.array([0.0, -28.0])
+for i in range(0,numRuns):
+    ang = yaw_fus[i]
+    #print('Angle: ',ang)
+    #print('Translation: ',np.array([x_fus[i],y_fus[i]]))
+    ang = np.deg2rad(ang)
+    rot = np.array([[np.cos(ang), -np.sin(ang)], [np.sin(ang), np.cos(ang)]])
+    OD1 = np.matmul(OA,rot)
+    #print('OD before t',OD1)
+    OD2 = OD1+np.array([x_fus[i],y_fus[i]]) # OD1 + OC
+    #print('OD after t',OD2)
+    DC = OA - OD2
+    dr[i] = np.hypot(DC[0], DC[1])
+    
+print(dr) 

@@ -184,7 +184,7 @@ class ComputerVisionThread(threading.Thread):
     def save_frame(self, frame, name):
         """Saves a frame with name and date/time stamp."""
         now = datetime.datetime.now()
-        date = now.strftime("%Y-%m-%d_%H%M")
+        date = now.strftime("%Y-%m-%d_%H%M%S")
         cv2.imwrite('figures/endFrame_'+name+'_'+date+'.jpg',frame)
 
     def undist_frame(self, frame, camera_matrix, camera_dist, resolution):
@@ -212,7 +212,7 @@ class ComputerVisionThread(threading.Thread):
         id2find = [uglyConst.MARKERID_BIG, uglyConst.MARKERID_SMALL] 
         marker_size  = [uglyConst.MARKERSIZE_BIG, uglyConst.MARKERSIZE_SMALL]
 
-        camera_matrix, camera_distortion, _ = self.loadCameraParams('runcam_nano3')
+        camera_matrix, camera_distortion, _ = self.loadCameraParams('runcam_nano3_matlab')
         cap, resolution = self.init_cv()
         
         #-- Init variable
@@ -253,11 +253,12 @@ class ComputerVisionThread(threading.Thread):
                     ids_seen[0] = 0
                 
                 if id2find[1] in ids:
-                    ids_seen[1] += 3 # +2 to choose smaller tag 
+                    ids_seen[1] += 5 # +2 to choose smaller tag 
                 else: 
                     ids_seen[1] = 0
                 
                 id2follow = np.argmax(ids_seen) 
+                print(id2follow)
                 idx_r, idx_c = np.where(ids == id2find[id2follow])
                 
                 #-- Extract the id to follow 
@@ -281,7 +282,7 @@ class ComputerVisionThread(threading.Thread):
 
                     #-- Now get Position and attitude of the camera respect to the marker
                     temp = np.array(tvec, ndmin=2).transpose()
-                    if id2follow == 0:
+                    if id2follow == 0: 
                         pos_camera = np.matmul(-R_tc,temp)-T_slide
                     else:
                         pos_camera = np.matmul(-R_tc,temp)
@@ -533,7 +534,7 @@ class CrazyflieThread(threading.Thread):
 
         if self.isClosePix() and self.mc._thread.get_height() < uglyConst.NEARING2APPROACH_HEIGHT:
             self.state.cv_mode = uglyConst.CVMODE_POSE
-            return self.stateApproachingXY
+            return self.stateApproachin
         else:
             time.sleep(0.05)
             return self.stateNearing

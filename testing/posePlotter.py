@@ -7,10 +7,13 @@ import numpy as np
 from matplotlib.colors import from_levels_and_colors
 from matplotlib.collections import LineCollection
 
+from matplotlib import rcParams
+rcParams['axes.titlepad'] = 2
+
 rows, cols = 3, 2
 
 fig, axs = plt.subplots(rows, cols, sharex=True, sharey='col', figsize=(12,7), dpi=100)
-fig.suptitle('Pose data')
+#fig.suptitle('Pose data')
 now = datetime.datetime.now()
 #axs.set_title('Battery Voltage')
 
@@ -18,9 +21,13 @@ N = 50
 
 #fileName = './cv_log.txt'
 fileName = '../saved_runs/pose_gaus3/poseTest_2020-04-20_111117.txt'
+#fileName = '../saved_runs/pose/poseTest_2020-04-17_1603.txt'
+
 
 raw_time, x, y, z, roll, pitch, yaw, detected, side = np.loadtxt(fileName, delimiter=',', unpack=True)
 raw_data = np.zeros((6,len(raw_time)))
+
+raw_time = [(raw_time[i]-1.0) for i in range(len(raw_time))]
 
 percent_detected = len(raw_time)
 

@@ -39,9 +39,6 @@ from cflib.crazyflie.log import LogConfig
 # Only output errors from the logging framework
 logging.basicConfig(level=logging.ERROR)
 
-
-
-
 class UglyLogging:
     """
     Simple logging example class that logs the Stabilizer from a supplied
