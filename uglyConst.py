@@ -45,11 +45,6 @@ DIST_IGE_HYST = 0.05
 R_CYLINDER = 0.05
 R_CYLINDER_HYST = 0.04     
 
-#-- Control parameters
-LANDMODE_NONE = 0           # no landing control, just vertical velocity=LANDING_ZVEL
-CTRL_POSD = 1
-LANDMODE_HOVER = 2
-
 Kyaw = 0.8
 Kx = 0.3
 Ky = 0.3

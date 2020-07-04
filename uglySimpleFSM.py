@@ -54,18 +54,6 @@ R_flipz = np.zeros((3,3), dtype=np.float32)
 T_slide = np.zeros((3,1),dtype=np.float32)
 T_slide[1] = uglyConst.MARKER_OFFSET
 
-def isRotationMatrix(R):
-    """
-    Checks if matrix R is a valid rotation matrix. 
-    NOTE: Is replaced by isRotationArray b/c np.matrix is legacy code.
-    TODO: Remove when replaced by isRotationArray everywhere.
-    """
-    Rt = np.transpose(R)
-    shouldBeIdentity = np.dot(Rt, R)
-    I = np.identity(3, dtype=R.dtype)
-    n = np.linalg.norm(I - shouldBeIdentity)
-    return n < 1e-6
-
 def isRotationArray(R):
     """
     Checks if matrix R is a valid rotation matrix.
@@ -76,30 +64,6 @@ def isRotationArray(R):
     I = np.identity(3)
     n = np.linalg.norm(I - shouldBeIdentity)
     return n < 1e-6
-
-def rotationMatrixToEulerAngles(R):
-    """
-    Converts from rotation matrix R representation to Euler angle representation.
-    NOTE: Is replaced by rotationArrayToEulerAngles b/c np.matrix is legacy code.
-    TODO: Remove when replaced by rotationArrayToEulerAngles everywhere.
-    """
-
-    assert (isRotationArray(np.array(R)))
-
-    sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
-
-    singular = sy < 1e-6
-
-    if not singular:
-        x = math.atan2(R[2, 1], R[2, 2])
-        y = math.atan2(-R[2, 0], sy)
-        z = math.atan2(R[1, 0], R[0, 0])
-    else:
-        x = math.atan2(-R[1, 2], R[1, 1])
-        y = math.atan2(-R[2, 0], sy)
-        z = 0
-
-    return np.array([x, y, z])
 
 def rotationArrayToEulerAngles(R):
     """
@@ -411,7 +375,6 @@ class CrazyflieThread(threading.Thread):
         self.scf = None
         self.runSM = True
         self.cmd_height_old = uglyConst.TAKEOFF_HEIGHT
-        self.landingController = uglyConst.LANDMODE_NONE # see uglyConst for controller choice
         self.b = barrier
         self.descCounter = 0
 
@@ -567,92 +530,41 @@ class CrazyflieThread(threading.Thread):
         if not self.isCloseCone:
             return self.stateApproachingXY
         elif self.mc._thread.get_height() < uglyConst.APPROACH2LANDING_HEIGHT:
-            if self.landingController == uglyConst.LANDMODE_NONE: 
-                return self.stateLanding 
-            elif self.landingController == uglyConst.LANDMODE_HOVER:
-                return self.stateHoverLand
-            elif self.landingController == uglyConst.CTRL_POSD:
-                self.enterLandingIGE()
-                return self.stateLandingIGE
+            return self.stateDescending 
         else:
             time.sleep(0.05)
             return self.stateApproachingXYZ
 
-    def stateLanding(self):
+    def stateDescending(self):
         """
         State: Landing
         Procedure: Descend to a set height, then stop and land.
         """
         self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx*2.0, self.ctrl.errory*uglyConst.Ky*2.0, -uglyConst.LANDING_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw)
 
-        print("stateLanding")
+        print("stateDescending")
 
         if self.mc._thread.get_height() > uglyConst.APPROACH2LANDING_HEIGHT:
             return self.stateApproaching
         elif self.mc._thread.get_height() < uglyConst.LANDING2LANDED_HEIGHT:
             #self.exitLanding()
-            #return self.stateLanded
-            return self.stateControlDescend
-        else:
-            time.sleep(0.01)
+            #return self.stateTerminating
             return self.stateLanding
-
-    def stateHoverLand(self):
-        """
-        State: HoverLanding
-        Procedure: Stop at certain height, adjust in XY plane until exactly over tag, then land.
-        """
-        self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx, self.ctrl.errory*uglyConst.Ky, 0.0, -self.ctrl.erroryaw*uglyConst.Kyaw)
-        print("stateHoverLand")
-
-        if self.isCloseXYP(uglyConst.LANDING_DIST):
-            self.exitLanding()
-            return self.stateLanded
         else:
             time.sleep(0.01)
-            return self.stateHoverLand
+            return self.stateDescending
 
-    def enterLandingIGE(self):
-        print("enterLandingIGE")
-        self.cmd_height_old = self.mc._thread.get_height()
-        return self.stateLandingIGE
-
-    def stateLandingIGE(self):
-        print("stateLandingIGE")
-        cmd_height = ref_height - self.mc._thread.get_height()
-
-        D = cmd_height-self.cmd_height_old
-
-        cmd_zvel = (D-self.ctrl.cmd_zvel) / 2.0 # smoothing, for fixed frame rate!!! :O
-
-        self.mc._set_vel_setpoint(
-            self.ctrl.errorx*uglyConst.Kx, 
-            self.ctrl.errory*uglyConst.Ky, 
-            cmd_zvel*uglyConst.Kz, 
-            -self.ctrl.erroryaw*uglyConst.Kyaw)
-
-        self.cmd_height_old = cmd_height
-
-        if self.mc._thread.get_height() > (uglyConst.DIST_IGE + uglyConst.DIST_IGE_HYST):
-            return self.stateApproaching
-        elif self.mc._thread.get_height() < uglyConst.LANDING_HEIGHT:
-            self.exitLanding()
-            return self.stateLanded
-        else:
-            time.sleep(0.05)
-            return self.stateLandingIGE
-
-    def stateControlDescend(self):
+    def stateLanding(self):
         """"""
         self.mc._set_vel_setpoint(self.ctrl.errorx*uglyConst.Kx*4.0, self.ctrl.errory*uglyConst.Ky*4.0, -uglyConst.MAX_ZVEL, -self.ctrl.erroryaw*uglyConst.Kyaw*2.0)
         self.descCounter += 1  
-        print("stateControlDescend")
+        print("stateLanding")
         if self.descCounter > 10:
             self.mc.land()
-            return self.stateLanded  
+            return self.stateTerminating  
         else:   
             time.sleep(0.01)
-            return self.stateControlDescend
+            return self.stateLanding
 
     def exitLanding(self):
         """
@@ -662,12 +574,12 @@ class CrazyflieThread(threading.Thread):
         self.mc.land()
         print("exitLandning")
         
-    def stateLanded(self):
+    def stateTerminating(self):
         """
         State: Landed
         Dummy state.
         """
-        print("stateLanded")
+        print("stateTerminating")
         return None
 
     def run(self):
@@ -714,5 +626,5 @@ if __name__ == '__main__':
     cf_thread.raise_exception()
     cf_thread.join()
     print('cf_thread stopped.')
-
+    
         

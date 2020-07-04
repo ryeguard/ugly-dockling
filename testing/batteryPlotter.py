@@ -5,11 +5,12 @@ import shutil
 import numpy as np
 
 rows, cols = 1, 1
-
+plt.rcParams.update({'font.size': 16})
 fig, axs = plt.subplots(rows, cols, sharex=True, figsize=(12,7), dpi=80)
 #fig.suptitle('Log data')
 #fig.canvas.manager.full_screen_toggle()
 axs.set_title('Battery life')
+
 
 N = 50
 

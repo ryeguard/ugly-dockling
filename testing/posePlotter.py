@@ -8,6 +8,7 @@ from matplotlib.colors import from_levels_and_colors
 from matplotlib.collections import LineCollection
 
 from matplotlib import rcParams
+plt.rcParams.update({'font.size': 12})
 rcParams['axes.titlepad'] = 2
 
 rows, cols = 3, 2
